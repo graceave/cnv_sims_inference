@@ -106,7 +106,7 @@ def get_rates(A, CNV, SNV, S, k, D, μA, m_cnv, m_snv, s_cnv, s_snv):
         A * m_snv] # ancestral -> SNV
     )
 
-def tau_leap(A, CNV, SNV, S, k, D, μA, m_cnv, m_snv, s_cnv, s_snv, updates, I, τ):
+def tau_leap(A, CNV, SNV, S, k, D, μA, m_cnv, m_snv, s_cnv, s_snv, updates, I, y, τ):
     """ Single update of simulation using tau leaps
     A :  number of ancestral cells at current time step
     CNV : number of cells with CNV at current time step
@@ -132,7 +132,7 @@ def tau_leap(A, CNV, SNV, S, k, D, μA, m_cnv, m_snv, s_cnv, s_snv, updates, I, 
     ΔS = I*D - D*S - (A*μA*S)/((S+k)*y) - (CNV*(μA*(1+s_cnv))*S)/((S+k)*y) - (SNV*(μA*(1+s_snv))*S)/((S+k)*y)
     return τ, A, CNV, SNV, S+ΔS
 
-def CNVsimulator_simpleChemo(A_inoc, S_init, k, D, μA, m_snv, s_snv, I, τ, seed=None, **kwargs):
+def CNVsimulator_simpleChemo(A_inoc, S_init, k, D, μA, m_snv, s_snv, I, y, τ, seed=None, **kwargs):
     """ Simulates CNV and SNV evolution in a steady state chemostat for 267 generations, which is 1548.6 hours
     Begins counting generations after 48 hours, during which time the chemostat reaches steady state
     Returns proportion of the population with a CNV for generations observed in Lauer et al. 2018 as 1d np.array of length 25
@@ -197,14 +197,14 @@ def CNVsimulator_simpleChemo(A_inoc, S_init, k, D, μA, m_snv, s_snv, I, τ, see
     CNV, SNV = 0, 0
     t=0
     while t < 48: # allow chemostat to reach steady state
-        τ, A, CNV, SNV, S = tau_leap(A, CNV, SNV, S, k, D, μA, m_cnv, m_snv, s_cnv, s_snv, updates, I, τ)
+        τ, A, CNV, SNV, S = tau_leap(A, CNV, SNV, S, k, D, μA, m_cnv, m_snv, s_cnv, s_snv, updates, I, y, τ)
         t+=τ
         
     t=0
     states = [np.array([A, CNV, SNV, S])]
     times=[t]
     while t < 1548.6: # record from when the chemostat reaches steady state to gen 267
-        τ, A, CNV, SNV, S = tau_leap(A, CNV, SNV, S, k, D, μA, m_cnv, m_snv, s_cnv, s_snv, updates, I, τ)
+        τ, A, CNV, SNV, S = tau_leap(A, CNV, SNV, S, k, D, μA, m_cnv, m_snv, s_cnv, s_snv, updates, I, y, τ)
         t+=τ
         states.append(np.array([A, CNV, SNV, S]))
         times.append(t)
