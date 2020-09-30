@@ -70,7 +70,7 @@ def CNVsimulator_simpleWF(N, s_snv, m_snv, generation, seed=None, **kwargs):
         p_cnv.append(p[1])  # frequency of CNVs
         p = E @ p.reshape((3, 1))  # natural selection + mutation        
         p /= p.sum()  # rescale proportions
-        n = np.random.multinomial(N, p) # random genetic drift
+        n = np.random.multinomial(N, np.ndarray.flatten(p)) # random genetic drift
     
     #these were the generations observed in Lauer et al. 2018, so the ones we will use here
     exp_gen = np.array([25,33,41,54,62,70,79,87,95,103,116,124,132,145,153,161,174,182,190,211,219,232,244,257,267])
@@ -198,6 +198,14 @@ def CNVsimulator_simpleChemo(A_inoc, S_init, k, D, μA, m_snv, s_snv, I, y, τ, 
     t=0
     while t < 48: # allow chemostat to reach steady state
         τ, A, CNV, SNV, S = tau_leap(A, CNV, SNV, S, k, D, μA, m_cnv, m_snv, s_cnv, s_snv, updates, I, y, τ)
+        if A < 0:
+            A = 0
+        if CNV < 0:
+            CNV = 0
+        if SNV < 0:
+            SNV = 0
+        if S < 0:
+            S=0
         t+=τ
         
     t=0
@@ -206,6 +214,14 @@ def CNVsimulator_simpleChemo(A_inoc, S_init, k, D, μA, m_snv, s_snv, I, y, τ, 
     while t < 1548.6: # record from when the chemostat reaches steady state to gen 267
         τ, A, CNV, SNV, S = tau_leap(A, CNV, SNV, S, k, D, μA, m_cnv, m_snv, s_cnv, s_snv, updates, I, y, τ)
         t+=τ
+        if A < 0:
+            A = 0
+        if CNV < 0:
+            CNV = 0
+        if SNV < 0:
+            SNV = 0
+        if S < 0:
+            S=0
         states.append(np.array([A, CNV, SNV, S]))
         times.append(t)
     

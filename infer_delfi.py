@@ -263,7 +263,7 @@ fig, axes = plt.subplots(3, 2, figsize=(10, 10))
 # observed
 axes[0,0].plot(obs['generation'],obs['data'])
 axes[0,0].set(ylabel='CNV frequency', xlabel='Generation')
-axes[0,0].set_title('observed data\nmodel:'+ EvoModel +'\nlog10(fitness): ' + str(true_params[0]) + '\nlog10(mutation rate): ' + str(true_params[1]))
+axes[0,0].set_title('observed data')
 
 axes[0,1].plot(log[0]['loss'],lw=2)
 axes[0,1].set(xlabel='iteration', ylabel='loss')
@@ -307,7 +307,8 @@ axes[2,1].set(xlabel='log10(CNV mutation rate)')
 
 
 fig.tight_layout()
-plt.title('')
+plt.title('model:'+ EvoModel +'\nlog10(CNV fitness): ' + str(true_params[0]) + '\nlog10(CNV mutation rate): ' + 
+                    str(true_params[1]) + 'SNV fitness:' + str(s_snv) + 'SNV mutation rate:' + str(m_snv))
 sns.despine()
 plt.savefig(outfile + '.pdf')  
 
