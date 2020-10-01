@@ -262,8 +262,9 @@ fig, axes = plt.subplots(3, 2, figsize=(10, 10))
 
 # observed
 axes[0,0].plot(obs['generation'],obs['data'])
-axes[0,0].set(ylabel='CNV frequency', xlabel='Generation')
-axes[0,0].set_title('observed data')
+axes[0,0].set(ylabel='Proportion of pop with CNV', xlabel='Generation')
+axes[0,0].set_title('observed data\nmodel:'+ EvoModel +'\nlog10(CNV fitness): ' + str(true_params[0]) + '\nlog10(CNV mutation rate): ' + 
+                    str(true_params[1]) + '\nSNV fitness:' + str(s_snv) + '\nSNV mutation rate:' + str(m_snv))
 
 axes[0,1].plot(log[0]['loss'],lw=2)
 axes[0,1].set(xlabel='iteration', ylabel='loss')
@@ -307,8 +308,7 @@ axes[2,1].set(xlabel='log10(CNV mutation rate)')
 
 
 fig.tight_layout()
-plt.title('model:'+ EvoModel +'\nlog10(CNV fitness): ' + str(true_params[0]) + '\nlog10(CNV mutation rate): ' + 
-                    str(true_params[1]) + 'SNV fitness:' + str(s_snv) + 'SNV mutation rate:' + str(m_snv))
+plt.title('')
 sns.despine()
 plt.savefig(outfile + '.pdf')  
 
@@ -317,6 +317,6 @@ plt.savefig(outfile + '.pdf')
 def format(value):
     return "%.12f" % value
 
-f= open("est_real_params.csv","a+")
+f= open("est_real_params_delfi.csv","a+")
 f.write(EvoModel+','+','.join(str(format(j)) for j in (true_params[0],s_est,true_params[1],μ_est,s_snv,m_snv)) + '\n')
 f.close() 

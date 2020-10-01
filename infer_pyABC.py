@@ -146,8 +146,9 @@ fig, axes = plt.subplots(2, 2, figsize=(10, 10))
 
 # observed
 axes[0,0].plot(gens,data_observed)
-axes[0,0].set(ylabel='CNV frequency', xlabel='Generation')
-axes[0,0].set_title('observed data')
+axes[0,0].set(ylabel='Proportion of pop with CNV', xlabel='Generation')
+axes[0,0].set_title('observed data\nmodel:'+ model +'\nlog10(CNV fitness): ' + str(true_params[0]) + '\nlog10(CNV mutation rate): ' + 
+                    str(true_params[1]) + '\nSNV fitness:' + str(s_snv) + '\nSNV mutation rate:' + str(m_snv))
 
 
 # marginal
@@ -171,8 +172,7 @@ axes[1,1].legend(loc='lower left')
 axes[1,1].set(xlabel='log10(CNV mutation rate)', ylabel='log10(CNV fitness effect)')
 
 fig.tight_layout()
-plt.title('model:'+ model +'\nlog10(CNV fitness): ' + str(true_params[0]) + '\nlog10(CNV mutation rate): ' + 
-                    str(true_params[1]) + 'SNV fitness:' + str(s_snv) + 'SNV mutation rate:' + str(m_snv))
+plt.title('')
 sns.despine()
 plt.savefig(outfile + '.pdf')  
 
