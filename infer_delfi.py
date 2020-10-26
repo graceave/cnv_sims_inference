@@ -20,6 +20,8 @@ import pandas as pd
 import numba
 from scipy.stats import entropy
 from cnv_simulation import CNVsimulator_simpleWF, CNVsimulator_simpleChemo
+from scipy.spatial import ConvexHull
+from matplotlib.path import Path
 
 red, blue, green = sns.color_palette('Set1', 3)
 
@@ -114,7 +116,7 @@ class CNVevo(BaseSimulator):
         if self.EvoModel == "WF":
             states = self.CNVsimulator_simpleWF(N=N, s_snv=s_snv, m_snv=m_snv, generation=generation, seed=sim_seed, cnv_params=cnv_params)
         if self.EvoModel == "Chemo":
-            states = self.CNVsimulator_simpleChemo(A_inoc=A_inoc, S_init=S_init, k=k, D=D, μA=μA, m_snv=m_snv, s_snv=s_snv, I=I, y=y, τ=τ, seed=sim_seed, cnv_params=cnv_params)
+            states = self.CNVsimulator_simpleChemo(A_inoculation=A_inoculation, S_init=S_init, k=k, D=D, μA=μA, m_snv=m_snv, s_snv=s_snv, S0=S0, y=y, τ=τ, seed=sim_seed, cnv_params=cnv_params)
         
         return {'data': states.reshape(-1),
                 'generation': np.array([25,33,41,54,62,70,79,87,95,103,116,124,132,145,153,161,174,182,190,211,219,232,244,257,267]),
@@ -162,13 +164,13 @@ N = 3e8
 generation = np.array(range(0,268))
 
 # chemostat parameters
-A_inoc = 1e5
+A_inoculation = 1e5
 S_init = .800
 D=0.12
 μA=0.45
 k=.103
 y=3244500
-I=.800
+S0=.800
 τ=1/10
 
 # summary statistics hyperparameters
@@ -243,6 +245,10 @@ xmin = mut_samples.min()
 xmax = mut_samples.max()
 
 s_range, μ_range = np.mgrid[ymin:ymax:100j, xmin:xmax:100j]
+s_range = np.vstack((s_range, np.repeat(true_params[0], 100)))
+μ_range = np.vstack((μ_range, np.repeat(true_params[1], 100)))
+s_range = s_range[np.argsort(s_range[:, 0])]
+μ_range = μ_range[np.argsort(μ_range[:, 0])]
 positions = np.vstack([s_range.ravel(), μ_range.ravel()])
 values = np.vstack([fitness_samples, mut_samples])
 kernel = scipy.stats.gaussian_kde(values)
@@ -280,20 +286,29 @@ axes[2,1].axvline(true_params[1], color=red,label="simulation parameter")
 axes[2,1].axvline(μ_est, color=green,label="MAP estimate")
 axes[2,1].legend()
 
-prior_min = np.log10(np.array([1e-4,1e-12]))
-prior_max = np.log10(np.array([0.3,1e-3]))
-
-s_range, μ_range = np.mgrid[np.log10(1e-4):np.log10(0.3):100j, np.log10(1e-12):np.log10(1e-3):100j]
-positions = np.vstack([s_range.ravel(), μ_range.ravel()])
-values = np.vstack([fitness_samples, mut_samples])
-kernel = scipy.stats.gaussian_kde(values)
-density = np.reshape(kernel(positions).T, s_range.shape)
-
 # joint
+axes[1,1].set_xlim(np.log10(1e-12),np.log10(1e-3))
+axes[1,1].set_ylim(np.log10(1e-4),np.log10(0.3))
 axes[1,1].pcolormesh(μ_range, s_range, density)
 axes[1,1].plot(true_params[1], true_params[0], color=red, marker='o',label="simulation parameter")
 axes[1,1].plot(μ_est, s_est, color=green, marker='o', label="MAP estimate")
 axes[1,1].legend(loc='lower left')
+
+# 50% credibility interval
+flat_indices = np.argpartition(-density.ravel(), 5050-1)[:5050]
+row_indices, col_indices = np.unravel_index(flat_indices, density.shape)
+cred_50 = np.vstack((s_range[row_indices, 0], μ_range[0, col_indices]))
+
+hull = ConvexHull(cred_50.T[:,np.array([1,0])])
+hull_path = Path(cred_50.T[:,np.array([1,0])][hull.vertices])
+in_cred50 = hull_path.contains_point((true_params[1],true_params[0]))
+
+axes[2,0].plot(cred_50.T[:,np.array([1,0])][hull.vertices,0], cred_50.T[:,np.array([1,0])][hull.vertices,1], 'k-', lw=2)
+axes[2,0].plot(true_params[1],true_params[0], color=red, marker='o', label="simulation parameter")
+axes[2,0].plot(μ_est, s_est, color="k", marker='o', label="MAP estimate")
+axes[2,0].legend(loc='lower left')
+axes[2,0].title('50% credibility interval')
+
 
 axes[2,0].plot(mut_samples, fitness_samples, ',k')
 axes[2,0].plot(true_params[1], true_params[0], color=red, marker='o', label="simulation parameter")
@@ -318,5 +333,5 @@ def format(value):
     return "%.12f" % value
 
 f= open("est_real_params_delfi.csv","a+")
-f.write(EvoModel+','+','.join(str(format(j)) for j in (true_params[0],s_est,true_params[1],μ_est,s_snv,m_snv)) + '\n')
+f.write(EvoModel+','+','.join(str(format(j)) for j in (true_params[0],s_est,true_params[1],μ_est,s_snv,m_snv, in_cred50)) + '\n')
 f.close() 
