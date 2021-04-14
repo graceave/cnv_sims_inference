@@ -29,7 +29,7 @@ from pyabc.populationstrategy import AdaptivePopulationSize
 import pyabc.visualization
 
 
-from pyabc.sampler import MulticoreParticleParallelSampler, MulticoreEvalParallelSampler
+from pyabc.sampler import MulticoreParticleParallelSampler
 from pyabc.sge import nr_cores_available
 
 from cnv_simulation import CNVsimulator_simpleWF, CNVsimulator_simpleChemo
@@ -98,8 +98,7 @@ prior = Distribution(
 abc = ABCSMC(models=simulate_pyabc,
              parameter_priors=prior,
              distance_function=AdaptivePNormDistance(p=2, scale_function=pyabc.distance.root_mean_square_deviation),
-             sampler=MulticoreEvalParallelSampler(n_procs=n_cores),
-             #sampler=MulticoreParticleParallelSampler(n_procs=n_cores), #hpc
+             sampler=MulticoreParticleParallelSampler(n_procs=n_cores), #hpc
              population_size=AdaptivePopulationSize(start_nr_particles=particle_size))
 print("Cores: " + str(nr_cores_available()))
 
@@ -123,15 +122,15 @@ def format(value):
         return "%.12f" % value
     
 #### get all observed data ####
-obs_file = np.genfromtxt(path + obs_name,delimiter=',')
-
+obs_file = np.genfromtxt(path + obs_name,delimiter=',', skip_header=1)
 exp_gen = ['25', '33', '41', '54', '62', '70', '79', '87', '95', '103', '116', '124', '132', '145', '153', '161', '174', '182', '190', '211','219', '232', '244', '257', '267']
 gens=np.array([25,33,41,54,62,70,79,87,95,103,116,124,132,145,153,161,174,182,190,211,219,232,244,257,267])
 
-for i in range(obs_file.shape[0]):
-    observation = obs_file[i,0:25]
-    true_params = obs_file[i,25:27]
-    labels_params = ['CNV fitness effect', 'CNV mutation rate']
+for i in range(obs_file.shape[1]):
+#for i in range(1):
+    observation = obs_file[:,i]
+    #true_params = obs_file[i,25:27]
+    #labels_params = ['CNV fitness effect', 'CNV mutation rate']
     dict_observed = {}
     j = 0
     for keys in exp_gen:
@@ -166,7 +165,7 @@ for i in range(obs_file.shape[0]):
     param_guess = np.array([positions[0,idx],positions[1,idx]])
     s_est, μ_est = scipy.optimize.minimize(kernelminus,param_guess, method ='Nelder-Mead', 
  options={'disp': True}).x
-    map_dist = param_distance(np.array([s_est, μ_est]),true_params)
+    #map_dist = param_distance(np.array([s_est, μ_est]),true_params)
     map_log_like = kernel([s_est, μ_est])
     
     #draw from posterior
@@ -206,18 +205,22 @@ for i in range(obs_file.shape[0]):
     f= open(path + out + "_est_real_params.csv","a+")
     f.write(model+',ABC-SMC,' + str(particle_size) + ','.join(str(format(j)) 
                                       for j in
-                                      (true_params[0],s_est,true_params[1],
-                                       μ_est,s_snv,m_snv,map_dist,
+                                      (i+1,s_est,
+                                       μ_est,s_snv,m_snv,
                                        fit_95hdi_low,fit_95hdi_high,
                                        mut_95hdi_low,mut_95hdi_high,
                                        aic, dic)) + '\n')
     f.close()
     
+    # save params and their weights
+    np.savetxt(path + out + "_gln_" + str(i+1) + "_ABCSMC_posterior_samples.csv", params, delimiter=",")
+    np.savetxt(path + out + "_gln_" + str(i+1) + "_ABCSMC_posterior_weights.csv", weights, delimiter=",")
+    
     ###PLOTS###
     fig, axes = plt.subplots(4,2)
     
     # text description
-    txt = 'ABC-SMC\nModel: ' + model + '\nSimulation id: ' + str(i) + '\nlog10(CNV fitness effect): ' + str(true_params[0]) + '\nlog10(CNV mutation rate): ' + str(true_params[1]) + '\nSNV fitness:' + str(s_snv) + '\nSNV mutation rate:' + str(m_snv) + '\nStarting particle size: ' + str(particle_size)
+    txt = 'ABC-SMC\nModel: ' + model + '\nGln pop id: ' + str(i+1) + '\nlog10(estimatedCNV fitness effect): ' + str(s_est) + '\nlog10(estimated CNV mutation rate): ' + str(μ_est) + '\nSNV fitness:' + str(s_snv) + '\nSNV mutation rate:' + str(m_snv) + '\nStarting particle size: ' + str(particle_size)
     
     axes[0,0].axis('off')
     axes[0,0].annotate(txt, (0.1, 0.5), xycoords='axes fraction', va='center')
@@ -240,7 +243,7 @@ for i in range(obs_file.shape[0]):
     for l,s in zip( CS.levels, strs ):
         fmt[l] = s
     axes[3,0].clabel(CS, CS.levels, fmt=fmt, inline=1, fontsize=15)
-    axes[3,0].plot(true_params[1],true_params[0], color=red, marker='o', label="simulation parameter")
+    #axes[3,0].plot(true_params[1],true_params[0], color=red, marker='o', label="simulation parameter")
     axes[3,0].plot(μ_est, s_est, color="k", marker='o', label="MAP estimate")
     axes[3,0].legend(loc='lower left', prop={'size': 5})
     axes[3,0].set(xlabel='log10(CNV mutation rate)', ylabel='log10(CNV fitness effect)')
@@ -254,8 +257,8 @@ for i in range(obs_file.shape[0]):
         pyabc.visualization.plot_kde_1d(df, w, xmin=np.log10(1e-12), xmax=np.log10(1e-3),
                                        x='m', ax=axes[2,0],
                                        label="PDF t={}".format(t))
-    axes[3,1].axvline(true_params[0], linestyle='dashed', label="True value", color=red)
-    axes[2,0].axvline(true_params[1], linestyle='dashed', label="True value", color=red)
+    #axes[3,1].axvline(true_params[0], linestyle='dashed', label="True value", color=red)
+    #axes[2,0].axvline(true_params[1], linestyle='dashed', label="True value", color=red)
     axes[3,1].axvline(s_est, color="k", label="MAP estimate")
     axes[2,0].axvline(μ_est, color="k", label="MAP estimate")
     axes[3,1].set(xlabel='log10(CNV fitness effect)')
