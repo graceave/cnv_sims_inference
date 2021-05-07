@@ -6,7 +6,7 @@ library(tidyverse)
 library(ggbeeswarm)
 library(patchwork)
 theme_set(theme_bw(base_size = 15))
-dir = "/Volumes/GoogleDrive/My Drive/Gresham Lab_Grace/cnv_sim_Ram_collab/Final_versions_Feb21/est_real_params/Lauer"
+dir = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc_output/test_performance/param_estimates/"
 setwd(dir)
 
 files = list.files(path = dir, pattern = '*est_real_params.csv')

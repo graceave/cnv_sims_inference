@@ -1,0 +1,357 @@
+---
+title: "Barcode analysis for Single-cell copy number variant detection reveals the dynamics and diversity of adaptation"
+author: "Grace Avecilla, Julie Chuong"
+date: "8/1/2018, 1-12-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "julie_barseq_csv_outfiles") #setwd where the bartender csv outfiles are. 
+```
+
+## This describes the barcode lineage tracking analysis
+If you have any questions about this code or output, please contact Grace Avecilla ga824@nyu.edu or David Gresham dgresham@nyu.edu
+
+# Introduction to 12-15-20 Barseq Dataset (Julie)
+PATH to our BARSEQ DATA: /scratch/cgsb/gencore/out/Gresham/2020-12-15_HNYY3DRXX/2
+- Paired-end 150 (PE150) not SR. So we had to think about which reads to use, R1 or R2, and how to use them. 
+- R1 reads are the forward reads that go in this direction: fw primer->BC2->loxP->BC1-->rev primer
+- R2 reads are the reverse reads that go in this direction: rev primer->BC1->loxP->BC2->fw primer
+- The barcode of interest in each cell is BC2. BC2 is the unique barcode sequence for that cell. BC1 sequence is constant in all cells so don't use BC1 for any analysis. BC1 is there the purposes of rebarcoding, but we did not do that. BC1 and BC2 refers to the annotation file/Snapgene file of a barseq library. 
+
+# Bartender Package
+https://github.com/LaoZZZZZ/bartender-1.1
+
+```{How to use R1 and R2 reads if barseq was PE150}
+#R1 files in the direction fw primer->BC2->loxP->BC1-->rev primer, use the following patterns:
+# pattern TACC[5]AA[5]AA[5]TT[5]ATAA  
+# ^pattern written out: TACCNNNNNAANNNNNAANNNNNTTNNNNNATAA to search for BC2 in R1 files
+# pattern containing BC1 (it is NOT the reverse complement of BC2!) : TTATNNNNNAANNNNNAANNNNNTTNNNNNGGTA to search for BC1 in R1 files...full pattern is truncated in the READ. *can do an ifelse statements to let it miss 2 bases from the end, 3bp, 4bp, 5bp etc to a cutoff we are comfortable with. #reverse comp is TTATNNNNNAANNNNNTTNNNNNTTNNNNNGGTA
+
+#R2 files in the direction rev primer->BC1->loxP->BC2->fw primer
+# pattern_withBC2(reverse comp of R1 BC2 pattern): TTATNNNNNAANNNNNTTNNNNNTTNNNNNGGTA  #use this pattern to search for BC2 sequence in R2 files. BC2 sequence is NOT truncated in the read! 
+
+# Options/my thoughts for workflow. 
+# 1. Do R1 only. Search for the BC2-containing pattern using bartender.  
+# 2. Use R2 only. Search for reverse complement of the BC2-containing pattern from 1, using bartender.  
+# 3. Number of unique barcodes found should be the same.
+
+```
+
+
+```{bash Barcode extraction and clustering}
+# Run this bash script on the terminal in HPC
+# USAGE: sbatch barcode_extract_and_cluster.sh 
+
+# We had 12 fastq's, so set the array 0-11, one array per fastq
+
+#!/bin/bash                     
+#SBATCH --job-name=extract_and_cluster
+#SBATCH --time=01:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=1
+#SBATCH --array=0-11
+#SBATCH --mem=8GB
+
+## divide all fastq into R1 and R2
+R1=($(ls /scratch/cgsb/gencore/out/Gresham/2020-12-15_HNYY3DRXX/2/*n01*.fastq.gz)) 
+R2=($(ls /scratch/cgsb/gencore/out/Gresham/2020-12-15_HNYY3DRXX/2/*n02*.fastq.gz)) 
+
+##this is going to assign the variables to file names
+F_ID_R1=${R1[$SLURM_ARRAY_TASK_ID]}
+F_ID_R2=${R2[$SLURM_ARRAY_TASK_ID]}
+
+NAME=${F_ID_R1:75:-9} ##sample name, eg. bc02_g124
+
+## make directories
+mkdir ${NAME} 
+
+## handling R1 F reads only from this point on
+cp $F_ID_R1 $NAME/ ##copy each fastq to its newly made {NAME} directory
+gunzip -c $NAME/*.gz > $NAME/"${NAME}_R1.fastq" ##unzip all the gz files inside the NAME directory, output the result into a new file named "{NAME}_R1.fastq" stored within the NAME dir 
+
+## load bartender package
+module purge
+module load bartender/intel/1.1-20210106
+
+##forward strand "BC2" extraction with quality cutoff of 30
+bartender_extractor_com -f $NAME/${NAME}_R1.fastq -o $NAME/miniBar_F_$NAME -p TACC[5]AA[5]AA[5]TT[5]ATAA -u 0,8 -d f -q ?
+
+## clustering (combining off-by-1 barcodes with exact match barcodes)
+## use this line of code for cases in which we did not expect low coverage 
+bartender_single_com -f $NAME/miniBar_F_${NAME}_barcode.txt -o F_$NAME -z -1  ##-z-1 denotes off-by-1
+
+```
+
+```{Download csv outfiles from greene to local machine}
+# something like this:
+# scp -r user@your.server.example.com:/path/to/foo /home/user/Desktop/ 
+
+#in bash
+$ ssh -L 8027:greene:22 jc10007@gw.hpc.nyu.edu
+
+#new terminal window
+$ scp -r jc10007@greene:/scratch/cgsb/gresham/julie/test4/csv_outfiles . 
+  #didn't work Grace had to download the files for me. 
+
+Put the csv_outfiles in the working directory
+```
+
+```{r barcode qc and filtering... work local machine...}
+
+setwd("~/nyudrive/greshamlab/data_analysis/julie_barseq_csv_outfiles")
+
+#look at the distribution of barcode clusters
+#this takes output files from bartender (.csv) as the input, x
+
+#BARTENDER SETTINGS:
+#exact match in extractor, no variance in length for indels etc
+#exact no mismatch in invariant sequence precedign and after barcode
+#high complexity libraries(here=ancestor/sample1) default clustering settings
+#low complexity libraries (here= all >1) clustering -z -1
+
+####functions####
+#function to make histograms and save to a directory
+make_hist = function(x, names, dir) {
+  #takes a dataframe or list of dataframes as x, the names of samples as names, 
+  #and the directory in which to save the plots as dir
+  #check to see if the directory exists and if it doesn't, make it
+  if(dir.exists(dir) == FALSE) {
+    dir.create(dir)
+  }
+  #make plots
+  plots = map2(x, names,
+               ~ggplot(.x, aes(time_point_1)) +
+                 geom_histogram(bins = 40) + 
+                 ggtitle(.y) +
+                 xlab('number of unique reads in cluster (log10 scaled)') +
+                 scale_x_log10()) 
+  walk2(plots, names, 
+        ~ ggsave(filename = paste0(.y, ".pdf"), plot = .x, path = dir))
+}
+
+#load libraries
+library(tidyverse)
+library(knitr)
+
+#read in cluster files (bartender output)
+temp = list.files(pattern="*pcr_cluster.csv")
+data_list = lapply(temp, read_csv)
+data_names = str_sub(temp, end=-17) #change this number depending on length of filename
+names(data_list) = data_names
+
+#get the number of clusters in each sample before filtering out clusters w/ low num unique umi support####
+cluster_count_beforefilter=map_dbl(data_list, nrow)
+write(rbind(data_names, cluster_count_beforefilter), file = 'Num_clusters_before_filter.txt', sep='\n')
+
+#diagnostic plots before any filters applied
+make_hist(data_list, data_names, './hist_initial')
+
+#remove clusters with size <4
+data_filtered = map(data_list, ~filter(.x, .x$time_point_1 > 3))
+
+#get the number of clusters in each sample after filtering out clusters >3 unique umi support#
+cluster_count_filter3=map_dbl(data_filtered, nrow)
+write(rbind(data_names, cluster_count_filter3), file = 'Num_clusters_size_greater3.txt', sep='\n')
+
+#histograms
+make_hist(data_filtered, data_names, './hist_greater3')
+
+#make cluster score histograms & save them in a directory
+unfiltered_quality_hist = map2(data_filtered, data_names,
+                       ~ggplot(.x, aes(Cluster.Score)) +
+                         geom_histogram() + 
+                         ggtitle(.y)) 
+
+if(dir.exists('./quality_plots_before_filter') == FALSE) {
+  dir.create('./quality_plots_before_filter')
+}
+walk2(unfiltered_quality_hist, data_names, 
+      ~ ggsave(filename = paste0(.y, ".pdf"), plot = .x, path = './quality_plots_before_filter'))
+
+#filter out cluster with cluster score > .75
+data_filtered_quality = map(data_filtered, ~filter(.x, .x$Cluster.Score < .75))
+
+#get the number of clusters in each sample after filtering out low quality clusters#
+cluster_count_quality=map_dbl(data_filtered_quality, nrow)
+write(rbind(data_names, cluster_count_quality), file = 'Num_clusters_high_quality.txt', sep='\n')
+
+#make histograms
+make_hist(data_filtered_quality, data_names, './hist_high_quality')
+
+#make cluster score density plots
+quality_density = map2(data_filtered_quality, data_names,
+             ~ggplot(.x, aes(Cluster.Score)) +
+               geom_density() + 
+               ggtitle(.y)) 
+if(dir.exists('./quality_plots_filtered') == FALSE) {
+  dir.create('./quality_plots_filtered')
+}
+walk2(quality_density, data_names, 
+      ~ ggsave(filename = paste0(.y, ".pdf"), plot = .x, path = './quality_plots_filtered'))
+```
+
+
+
+```{r combine all filtered data}
+#function to add new data to the alldata dataframe
+add2alldata <- function(alldata, newdata, samplename='') {
+  #get number of columns in alldata
+  numcol=ncol(alldata)
+  #add new empty column for this sample
+  alldata[,samplename]=NA
+  #go through the centers in the new data and check if they match rows in alldata
+  temp = vector()
+  temp[1:numcol] = 0
+  row_names=rownames(alldata)
+  i=1
+  row = 0
+  while(i<=nrow(newdata)){
+    row = which(rownames(alldata) == newdata[i,2])
+    #if they do match an existing row, add the value to that row
+    if (length(row) != 0) {
+      alldata[row, numcol+1]=newdata[i,4]
+    } else {
+      temp = c(temp, newdata[i,4])
+      alldata=rbind(alldata,temp)
+      row_names=append(row_names, as.character(newdata[i,2]))
+    } #if they don't match an existing row, add a new row, saving the row name
+    temp = vector()
+    temp[1:numcol] = 0
+    row=0
+    i=i+1
+  }
+  #make sure row names reflect centers
+  rownames(alldata)=row_names
+  #fill empty columns with 0
+  alldata[is.na(alldata)] = 0
+  
+  return(alldata)
+}
+
+##combine all into one large dataframe####
+#except ancestor
+##initialize dataframe - JULIE: barcode the first one to start off. For loop will add to it. 
+alldata = data.frame(data_filtered_quality$F_bc02_g124$time_point_1, 
+                      row.names = data_filtered_quality$F_bc02_g124$Center)
+colnames(alldata) = 'F_bc02_g124'
+
+#add to data frame, using the `add2alldata` function we made earlier
+#JULIE: 1:12 bc 12 samples
+for (i in 1:12)  {
+  alldata=add2alldata(alldata, as.data.frame(data_filtered_quality[i]), data_names[i]) 
+}
+
+#add a row with total number of unique reads for a sample
+alldata['total',]=colSums(alldata)
+
+# Julie ignore the ancestor stuff
+#make ancestor only data frame
+#ancestor = data.frame(data_filtered_quality$ancestor_rep1$time_point_1, 
+#                      row.names = data_filtered_quality$ancestor_rep1$Center)
+#colnames(ancestor) = 'ancestor_rep1'
+#ancestor=add2alldata(ancestor, as.data.frame(data_filtered_quality$ancestor_rep2), 'ancestor_rep2')
+#ancestor['total',]=colSums(ancestor)
+```
+
+
+
+```{r Figure S11}
+#figure S11, relative frequency of barcodes in ancestral population (from sequencing run with higher coverage.) The red arrow indicating an overrepresented barcode in the ancestral population was manually annotated in illustator
+plot = ggplot(data_filtered_quality$ancestor_rep1, aes(time_point_1/sum(time_point_1))) + 
+  geom_histogram(bins = 38) + 
+  ylab('number of barcodes') +
+  xlab('relative frequency (log10 scaled)') +
+  scale_x_log10(expand=c(0,0)) +
+  theme_classic()
+  
+ggsave(filename = paste0('FigureS11', ".pdf"), plot = plot, path = '.')
+```
+
+```{r Change read counts into proportions}
+#change from reads into into proportions
+props=as_tibble(sapply(alldata, function(x) x/x[nrow(alldata)]))
+props = props %>% mutate(barcode = rownames(alldata)) %>% filter(barcode != 'total')
+#change 0 into na
+props[props == 0] = NA
+
+#make ancestor props df
+anc_props = as_tibble(sapply(ancestor, function(x) x/x[nrow(ancestor)]))
+anc_props = anc_props %>% mutate(barcode = rownames(ancestor)) %>% filter(barcode != 'total')
+#change 0 into na
+anc_props[anc_props == 0] = NA
+```
+
+
+
+```{r Make summary tables for each pop, results='asis'}
+##function to make summary tables for each pop##
+summarize_pop = function(data, mycols, popname) {
+  y = data %>% select(c(mycols, 'barcode'))
+  y = y %>% mutate(onepercent = apply(y[,1:4], MARGIN = 1, function(x) any(x >= 0.01, na.rm = TRUE)), 
+                   alltime = apply(y, MARGIN = 1, function(x) sum(!is.na(x[1:4])) == 4), 
+                   g70_90_150 = apply(y, MARGIN = 1, function(x) sum(!is.na(x[1:3])) == 3 & is.na(x[4])),
+                   g90_150_170 = apply(y, MARGIN = 1, function(x) sum(!is.na(x[2:4])) == 3 & is.na(x[1])), 
+                   g70_90 = apply(y, MARGIN = 1, function(x) sum(!is.na(x[1:2])) == 2 & is.na(x[3])),
+                   g90_150 = apply(y, MARGIN = 1, function(x) sum(!is.na(x[2:3])) == 2 & is.na(x[1]) & is.na(x[4])),
+                   g150_270 = apply(y, MARGIN = 1, function(x) sum(!is.na(x[3:4])) == 2 & is.na(x[3])),
+                   g70 = apply(y, MARGIN = 1, function(x) sum(is.na(x[1:4])) == 3 & !is.na(x[1])),
+                   g90 = apply(y, MARGIN = 1, function(x) sum(is.na(x[1:4])) == 3 & !is.na(x[2])),
+                   g150 = apply(y, MARGIN = 1, function(x) sum(is.na(x[1:4])) == 3 & !is.na(x[3])),
+                   g270 = apply(y, MARGIN = 1, function(x) sum(is.na(x[1:4])) == 3 & !is.na(x[4]))) %>% group_by(onepercent)
+  #here is a table that summarizes how many barcodes are found in more than one timepoint or in only one timepoint, and how many barcodes are found at a frequency of greater than 1%
+  summary_between_timepts = summarise_all(y[,6:16], sum)
+  print(knitr::kable(summary_between_timepts, caption=popname, format='pandoc'))
+  #make summary table for plotting
+  #get only the lineages that reach at least 1% subpop frequency
+  z = y %>%
+    filter(onepercent == TRUE) %>% ungroup() %>%
+    select(c(mycols, 'barcode')) %>%
+    gather(sample, proportion, -barcode) %>%
+    filter(!is.na(proportion)) %>%
+    separate(sample, c('population','generation'), sep='_g')
+  #combine all lineages that don't reach 1% subpop freq into one category
+  q=y %>% filter(onepercent == FALSE) %>% ungroup() %>% 
+    select(c(mycols, 'barcode')) %>%
+    gather(sample, proportion, -barcode) %>%
+    filter(!is.na(proportion)) %>%
+    separate(sample, c('population','generation'), sep='_g') %>%
+    group_by(generation) %>% summarise(proportion = sum(proportion)) %>% 
+    mutate(population = z$population[1:4], barcode = 'less_onepercent')
+  for_plots=bind_rows(z, q)
+}
+#get summary for each population
+bc01_summary=summarize_pop(props, mycols=c('bc01_g70', 'bc01_g90', 'bc01_g150', 'bc01_g270'), popname = 'bc01')
+bc02_summary=summarize_pop(props, mycols=c('bc02_g70', 'bc02_g90', 'bc02_g150', 'bc02_g270'), popname = 'bc02')
+#combine pops into one 
+summary_data = bind_rows(bc01_summary, bc02_summary)
+```
+
+
+
+```{r Figure 5}
+#pretty colors
+mycolors = c('#AF8FC2', '#8E191C', '#BE3A35', '#E25C26','#F5B18F', '#ECBE93', '#645426', 
+             '#A79131', '#7587C0', '#65469C', '#376D69', '#93CF9D', '#1B4A4B', '#6B6B88',
+             '#A46893', '#FFD892', '#4292C7', '#BA3757', '#8E97A0', '#067F62',
+             '#9C6461', '#E36756', '#9D3021', '#9F5728', '#F0BD72', '#FBCF5A',
+             '#FAC934', '#9F966D', '#2C4D2E', '#64976C', '#EB8923', '#60A388', 
+             '#B4BAC7', '#5E465E', '#D3689A', '#E5E2E2')
+
+#relevel so that less than one percent is on the bottom (the rest of the barcodes may differ slightly in order from run to run)
+summary_data$barcode = factor(summary_data$barcode, levels=c(unique(summary_data$barcode[summary_data$barcode != "less_onepercent"]), 'less_onepercent'))
+
+#make the plot
+plot = ggplot(summary_data, aes(x=as.numeric(generation), y=proportion), show.legend = F) + 
+  geom_bar(aes(fill = barcode), stat = "identity", show.legend = T) +
+  theme_classic()+
+  scale_y_continuous(expand=c(0,0), limits=c(0,1)) +
+  scale_fill_manual(values = sample(mycolors)) +
+  facet_wrap(~ population)
+#replot until color combo is aesthetically pleasing (sorry, not the best way to do this)
+plot
+
+#the bars were connected together in illustrator
+```
+

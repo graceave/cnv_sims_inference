@@ -5,7 +5,7 @@
 library(tidyverse)
 library(ggbeeswarm)
 library(patchwork)
-setwd("/Volumes/GoogleDrive/My Drive/Gresham Lab_Grace/cnv_sim_Ram_collab")
+setwd("/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc_output/test_performance/param_estimates/")
 
 data_delfi = read_csv('est_real_params.csv') %>%
   dplyr::filter(mu_snv > 0) 

@@ -16,7 +16,7 @@ from cnv_simulation import CNVsimulator_simpleWF, CNVsimulator_simpleChemo
 
 import sbi.utils as utils
 from sbi.inference.base import infer
-from sbi.inference import SNPE, prepare_for_sbi
+from sbi.inference import SNPE, prepare_for_sbi, simulate_for_sbi
 import torch
 
 parser = argparse.ArgumentParser()
@@ -61,20 +61,10 @@ def CNVsimulator(cnv_params):
     return states
 
 
-#make sure simulator and prior adhere to sbi requirementst
 simulator, prior = prepare_for_sbi(CNVsimulator, prior)
 
-Chemo_number_presimulated = 10000 
-Chemo_theta_presimulated = prior.sample((Chemo_number_presimulated,))
-
-batches = torch.split(Chemo_theta_presimulated, 1, dim=0)
-x_presimulated = []
-for t in batches:
-    x_presimulated.append(simulator(t))
-x_presimulated = torch.cat(x_presimulated, dim=0)
-
-print('Shape of x_presimulated    : ', x_presimulated.shape)
+theta_presimulated, x_presimulated = simulate_for_sbi(simulator, proposal=prior, num_simulations=1000, num_workers=1)
 
 #save presimulated thetas and data to csvs
-np.savetxt("Chemo_presimulated_theta_10000_" + str(num) +".csv", Chemo_theta_presimulated.numpy(), delimiter=',')
-np.savetxt("Chemo_presimulated_data_10000" + str(num) +".csv", x_presimulated.numpy(), delimiter=',')
+np.savetxt("Chemo_presimulated_theta_1000_" + str(num) +".csv", theta_presimulated.numpy(), delimiter=',')
+np.savetxt("Chemo_presimulated_data_1000_" + str(num) +".csv", x_presimulated.numpy(), delimiter=',')
