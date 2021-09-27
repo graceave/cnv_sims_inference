@@ -1,0 +1,382 @@
+---
+title: "Figure 4 and associated supplementary figures"
+output: html_notebook
+author: Grace Avecilla
+---
+
+What is the best way to use aggregate observations? Single inference to distribution (WF + NPE) 
+
+```{r libs}
+library(tidyverse)
+library(patchwork)
+library(scales)
+library(ggbeeswarm)
+library(reticulate)
+theme_set(theme_classic(base_size = 21))
+file_dir = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc_output/test_performance/multi/"
+fig_path = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/figs/"
+
+```
+
+```{r functions}
+read_est_params = function(x) {
+  if(str_detect(x, "NPE")==TRUE){
+    file = read_csv(x, col_names = c("Model","Method","col_to_sep",
+                                     "s_est","mu_real",
+                                     "mu_est","s_snv","m_snv","rmse_map",
+                                     "mean_rmse_ppc","rmse95_low_ppc","rmse95_hi_ppc",
+                                     "corr_map",
+                                     "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
+                                     "fit_95hdi_low","fit_95hdi_high",
+                                     "mut_95hdi_low","mut_95hdi_high",
+                                     "aic", "dic", "waic1", "waic2")) %>%
+      separate(col_to_sep, into = c(NA,NA,NA,"n_presim", "presim_rep","s_real","s_real2"), 
+               sep="([_.])") %>%
+      mutate(s_real = paste(str_remove(s_real, "csv"), s_real2,sep = ".")) %>%
+      select(-s_real2) %>%
+      mutate(s_est_10 = s_est, s_real_10 = as.numeric(s_real),
+             mu_est_10 = mu_est, mu_real_10 = mu_real,
+             s_est = 10^s_est, s_real = 10^as.numeric(s_real),
+             mu_est = 10^mu_est, mu_real = 10^mu_real) %>%
+      mutate(mu_ratio = mu_est/mu_real, s_ratio = s_est/s_real,
+             mu_diff = mu_est - mu_real, s_diff = s_est - s_real) %>%
+      mutate(flow_type = if_else(str_detect(x, "nsf"), "NSF", "MAF"))
+  }
+  if(str_detect(x, "pyABC")==TRUE) {
+    file = read_csv(x, col_names = c("Model","Method","col_to_sep",
+                                     "s_est","mu_real",
+                                     "mu_est","s_snv","m_snv","rmse_map",
+                                     "mean_rmse_ppc","rmse95_low_ppc","rmse95_hi_ppc",
+                                     "corr_map",
+                                     "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
+                                     "fit_95hdi_low","fit_95hdi_high",
+                                     "mut_95hdi_low","mut_95hdi_high",
+                                     "aic", "dic", "waic1", "waic2")) %>%
+      separate(col_to_sep, into = c("n_presim","s_real"), 
+               sep="([-])") %>%
+      mutate(s_real = as.numeric(s_real)*-1) %>%
+      mutate(presim_rep = case_when(str_detect(x, "_1_") ~ "1",
+                                    str_detect(x, "_2_") ~ "2",
+                                    str_detect(x, "_3_") ~ "3")) %>%
+      select("Model","Method","n_presim", "presim_rep","s_real",
+             "s_est","mu_real",
+             "mu_est","s_snv","m_snv","rmse_map",
+             "mean_rmse_ppc","rmse95_low_ppc","rmse95_hi_ppc",
+             "corr_map",
+             "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
+             "fit_95hdi_low","fit_95hdi_high",
+             "mut_95hdi_low","mut_95hdi_high",
+             "aic", "dic", "waic1", "waic2") %>%
+      mutate(s_est_10 = s_est, s_real_10 = as.numeric(s_real),
+             mu_est_10 = mu_est, mu_real_10 = mu_real,
+             s_est = 10^s_est, s_real = 10^as.numeric(s_real),
+             mu_est = 10^mu_est, mu_real = 10^mu_real) %>%
+      mutate(mu_ratio = mu_est/mu_real, s_ratio = s_est/s_real,
+             mu_diff = mu_est - mu_real, s_diff = s_est - s_real) %>%
+      mutate(flow_type = NA) %>%
+      mutate(n_presim = if_else(n_presim == "100", "10000", "100000"))
+  }
+  return(file)
+}
+
+read_est_params_single = function(x) {
+  data = read_est_params(x)
+  data = data %>% 
+    mutate(obs_set = str_extract(x, pattern="\\w+.([0-1]+)_([mut57]+)"))
+  return(data)
+}
+
+read_est_params_multi = function(x) {
+  if(str_detect(x, "NPE")==TRUE){
+    file = read_csv(x, col_names = c("obs_set", "held_out","Model","Method","col_to_sep",
+                                     "shape_est","scale_real","scale_est","mu_real",
+                                     "mu_est","s_snv","m_snv",
+                                     "mean_rmse_ppc","rmse95_low_ppc","rmse95_hi_ppc",
+                                     "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
+                                     "shape_95hdi_low","shape_95hdi_high",
+                                     "scale_95hdi_low","scale_95hdi_high",
+                                     "mut_95hdi_low","mut_95hdi_high",
+                                     "aic", "dic", "waic1", "waic2",
+                                     "var_observation", "var_ppc")) %>%
+      separate(col_to_sep, into = c(NA,NA,NA,NA,"n_presim", "presim_rep","shape_real"), 
+               sep="([_.])") %>%
+      mutate(shape_real = as.numeric(str_remove(shape_real, "csv"))) %>%
+      mutate(scale_est_10 = scale_est, scale_real_10 = scale_real,
+             mu_est_10 = mu_est, mu_real_10 = mu_real,
+             scale_est = 10^scale_est, scale_real = 10^scale_real,
+             mu_est = 10^mu_est, mu_real = 10^mu_real) %>%
+      mutate(flow_type = if_else(str_detect(x, "nsf"), "NSF", "MAF"))
+  }
+  if(str_detect(x, "ABC")==TRUE) {
+    file = read_csv(x, col_names = c("obs_set", "held_out","Model","Method","col_to_sep",
+                                     "shape_est","scale_real","scale_est","mu_real",
+                                     "mu_est","s_snv","m_snv",
+                                     "mean_rmse_ppc","rmse95_low_ppc","rmse95_hi_ppc",
+                                     "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
+                                     "shape_95hdi_low","shape_95hdi_high",
+                                     "scale_95hdi_low","scale_95hdi_high",
+                                     "mut_95hdi_low","mut_95hdi_high",
+                                     "aic", "dic", "waic1", "waic2",
+                                     "var_observation", "var_ppc")) %>%
+      mutate(n_presim = if_else(col_to_sep%%2 == 0, 
+                                as.numeric(str_sub(as.character(col_to_sep), end=-3)),
+                                as.numeric(str_sub(as.character(col_to_sep), end=-2)))) %>%
+      mutate(shape_real = if_else(col_to_sep%%2 == 0, 10,1)) %>%
+      mutate(presim_rep = case_when(str_detect(x, "_1_") ~ "1",
+                                    str_detect(x, "_2_") ~ "2",
+                                    str_detect(x, "_3_") ~ "3")) %>%
+      select("obs_set", "held_out","Model","Method","n_presim", "presim_rep","shape_real",
+             "shape_est","scale_real","scale_est","mu_real",
+             "mu_est","s_snv","m_snv",
+             "mean_rmse_ppc","rmse95_low_ppc","rmse95_hi_ppc",
+             "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
+             "shape_95hdi_low","shape_95hdi_high",
+             "scale_95hdi_low","scale_95hdi_high",
+             "mut_95hdi_low","mut_95hdi_high",
+             "aic", "dic", "waic1", "waic2","var_observation", "var_ppc") %>%
+      mutate(scale_est_10 = scale_est, scale_real_10 = scale_real,
+             mu_est_10 = mu_est, mu_real_10 = mu_real,
+             scale_est = 10^scale_est, scale_real = 10^scale_real,
+             mu_est = 10^mu_est, mu_real = 10^mu_real) %>%
+      mutate(flow_type = "") %>%
+      mutate(n_presim = if_else(n_presim == "100", "10000", "100000"))
+  }
+  return(file %>% mutate(obs_set = str_extract(obs_set, "\\w+.([0-1]+)_([mut57]+)")))
+}
+
+```
+
+```{r get data}
+files = list.files(path = paste0(file_dir,"param_estimates_single_multi/"), pattern = '*est_real_params.csv')
+files = paste0(file_dir, "param_estimates_single_multi/", files)
+data_list = map(files,read_est_params_single)
+single_data_all = do.call(rbind, data_list)
+
+files = list.files(path = paste0(file_dir,"param_estimates_multi_multi/"), pattern = '*est_real_params.csv')
+files = paste0(file_dir, "param_estimates_multi_multi/", files)
+data_list = map(files,read_est_params_multi)
+multi_data_all = do.call(rbind, data_list)
+```
+
+```{r}
+single_data = single_data_all %>% filter(n_presim == "100000" & flow_type == "NSF" & Model == "WF") %>% 
+  unite(mod_method, Model, Method, sep = " ", remove=F) %>%
+  unite(sim_params,s_real, mu_real, remove = F) %>%
+  mutate(alpha_real = if_else(str_detect(obs_set,"shape1_"), 1, 10),
+         beta_real = case_when(str_detect(obs_set, "scale0.001")~ 0.001,
+                               str_detect(obs_set, "scale0.0001")~ 0.0001,
+                               str_detect(obs_set, "scale0.01")~ 0.01,
+                               str_detect(obs_set, "scale0.1")~ 0.1))
+
+multi_data = multi_data_all %>%filter(n_presim == "100000" & flow_type == "NSF" & Model == "WF") %>%
+  mutate(es = shape_real*scale_real) %>%
+  unite(sim_params,es, mu_real, remove = F) %>%
+  mutate(es_est = shape_est*scale_est)
+
+color_vec = c("#4daf4a", "#984ea3","#e41a1c", "#377eb8", "black")
+mod_meth = c("Chemo NPE", "WF NPE", "Chemo ABC-SMC", "WF ABC-SMC", "Pseudo-observation")
+
+obs_names = unique(single_data$obs_set)
+
+```
+
+```{python}
+import scipy.stats
+import scipy.special
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+leave_outs = np.array([[0,3,6],[1,4,7],[2,5,8]])
+out = []
+for i in r.obs_names:
+        data=r.single_data.loc[r.single_data['obs_set'] == i]
+        data = pd.DataFrame.to_numpy(data['s_est'])
+        for j in leave_outs:
+                new_data = np.delete(data, j)
+                fit_alpha, fit_loc, fit_beta = scipy.stats.gamma.fit(new_data, floc=0)
+                t=[fit_alpha, fit_loc, fit_beta, i]
+                out.append(t)
+single_inferred_dfe = pd.DataFrame(out, columns = ['single_alpha', 'single_loc', 'single_beta', 'obs_set'])
+
+```
+
+```{python}
+#calculate kl divergence
+out = []
+for i in r.obs_names:
+        data_s=single_inferred_dfe.loc[single_inferred_dfe['obs_set'] == i]
+        data_m = r.multi_data.loc[r.multi_data['obs_set'] == i]
+        alpha_real = data_m['shape_real'].iloc[0]
+        beta_real = data_m['scale_real'].iloc[0]
+        mut_real = data_m['mu_real'].iloc[0]
+        for j in range(3):
+                 x=np.linspace(beta_real*alpha_real/10,beta_real*alpha_real, 100)
+                 p=scipy.stats.gamma.pdf(x, alpha_real, 0, beta_real)
+                 q=scipy.stats.gamma.pdf(x, data_s['single_alpha'].iloc[j], 0, data_s['single_beta'].iloc[j])
+                 kls=sum(scipy.special.kl_div(p, q))
+                 q=scipy.stats.gamma.pdf(x, data_m['shape_est'].iloc[j], 0, data_m['scale_est'].iloc[j])
+                 klm=sum(scipy.special.kl_div(p, q))
+                 t=[kls, klm, i, alpha_real, beta_real, mut_real]
+                 out.append(t)
+kl_div = pd.DataFrame(out, columns = ['kl_div_single', 'kl_div_multi', 'obs_set', 'alpha_real', 'beta_real', 'mu_real'])
+kl_div.to_csv("SupplementaryTable1.csv")
+```
+
+
+
+```{r}
+multi_data$sim_params = factor(multi_data$sim_params, levels = c("0.001_1e-05", "0.001_1e-07", "0.1_1e-05", "0.1_1e-07"),
+                         ordered = TRUE, labels=c(expression(atop("s = 0.001,", paste(delta, "  = 1e-5"))),
+                                                  expression(atop("s = 0.001,", paste(delta, "  = 1e-7"))),
+                                                  "0.1_1e-05"  = expression(atop("s = 0.1,", paste(delta, "  = 1e-5"))),
+                                                  "0.1_1e-07"  = expression(atop("s = 0.1,", paste(delta, "  = 1e-7")))))
+```
+
+```{r fig 4}
+plot_dist = function(x, legend=TRUE) {
+  temp = multi_data %>%
+    filter(obs_set == x)
+  temp2 = py$single_inferred_dfe %>%
+    filter(obs_set == x)
+  if(temp$es[1] == 0.1) {
+    d = data.frame(x = seq(0,1, length.out = 100))
+    bw=0.1
+    y_ann = 7.5
+    x_ann = 0.75
+  }
+  if(temp$es[1] == 0.001) {
+    d = data.frame(x = seq(0,0.04, length.out =  100))
+    bw=0.001
+    y_ann=1000
+    x_ann=0.03
+  }
+  p = ggplot(data = d, aes(x)) +
+    #geom_histogram(data = temp2, aes(x = value, fill = s_type), alpha = 0.5, binwidth=bw) +
+    stat_function(fun = function(x) 
+           {dgamma(x, shape = temp$shape_real[1], scale = temp$scale_real[1])},# * 20 * bw}, 
+           aes(colour = "True distribution"), size = 1, alpha=1) +
+    stat_function(fun = function(x) 
+           {dgamma(x, shape = temp$shape_est[1], scale = temp$scale_est[1])},# * 20 * bw}, 
+           aes(colour = "Directly inferred MAP distribution"), size = 1, alpha = 0.6) +
+    stat_function(fun = function(x) 
+           {dgamma(x, shape = temp$shape_est[2], scale = temp$scale_est[2])},# * 20 * bw}, 
+           aes(colour = "Directly inferred MAP distribution"), size = 1, alpha = 0.6) +
+    stat_function(fun = function(x) 
+           {dgamma(x, shape = temp$shape_est[3], scale = temp$scale_est[3])},# * 20 * bw}, 
+           aes(colour = "Directly inferred MAP distribution"), size = 1, alpha = 0.6) +
+    #####
+      stat_function(fun = function(x) 
+           {dgamma(x, shape = temp2$single_alpha[1], scale = temp2$single_beta[1])},# * 20 * bw}, 
+           aes(colour = "Distribution from single observation MAPs"), size = 1, alpha = 0.6) +
+    stat_function(fun = function(x) 
+           {dgamma(x, shape = temp2$single_alpha[2], scale = temp2$single_beta[2])},# * 20 * bw}, 
+           aes(colour = "Distribution from single observation MAPs"), size = 1, alpha = 0.6) +
+    stat_function(fun = function(x) 
+           {dgamma(x, shape = temp2$single_alpha[3], scale = temp2$single_beta[3])},# * 20 * bw}, 
+           aes(colour = "Distribution from single observation MAPs"), size = 1, alpha = 0.6) +
+    scale_color_manual(breaks = c("True distribution","Directly inferred MAP distribution",
+                                  "Distribution from single observation MAPs"), name = "",
+                     #values=c("#453781", "#1f968b", "#75d054")) +
+                     values=c("black", "blue", "darkgreen")) +
+    xlab("selection coefficient") +
+    ylab("density") +
+    annotate("text",label=as.expression(bquote(atop("E(s)="~.(temp$es[1])~",",delta~"= "~.(temp$mu_real[1])))),
+            x=x_ann, y = y_ann, size=6)
+  if(legend == TRUE) {
+    return(p)
+  } 
+  else {
+    return(p + theme(legend.position = "none"))
+  }
+}
+
+plot_list = list()
+i=1
+al = c("A", "B","C","D","A", "B","C","D")
+for(obs in unique(single_data$obs_set)) {
+  #print(plot_dist(obs))
+  plot_list[[i]] = plot_dist(obs, legend = FALSE) + ggtitle(al[i])
+  i=i+1
+}
+plot_list[[4]] = plot_dist(unique(single_data$obs_set)[4], legend = TRUE) + ggtitle(al[4])
+plot_list[[8]] = plot_dist(unique(single_data$obs_set)[8], legend = TRUE) + ggtitle(al[8])
+
+fig4 = plot_list[[1]] + plot_list[[2]] + plot_list[[3]] + plot_list[[4]]
+fig4
+ggsave(paste0(fig_path,"Figure4.pdf"), plot = fig4, width = 20, height = 10, units = "in")
+ggsave(paste0(fig_path,"Figure4.png"), plot = fig4, width = 20, height = 10, units = "in")
+```
+*Figure 4.*  A set of eleven simulated synthetic observations was generated from a Wright-Fisher model with CNV selection coefficients sampled from an exponential distribution of fitness effects (DFE) (black curve). The MAP DFEs (blue curves) were directly inferred using three different subsets of eight out of eleven synthetic observations. We also inferred the selection coefficient for each observation in the set of eleven individually, and fit Gamma distributions to sets of eight inferred selection coefficients (green curves). All inferences were performed with NPE using the same amortized network to infer a posterior for each set of eight synthetic observations or each single observation. 
+
+
+```{r sup fig 6}
+supp = plot_list[[5]] + plot_list[[6]] + plot_list[[7]] + plot_list[[8]] + plot_layout(design = layout)
+supp
+ggsave(paste0(fig_path,"SupplementaryFig6.pdf"), plot = supp, width = 20, height = 10, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFig6.png"), plot = supp, width = 20, height = 10, units = "in")
+```
+
+*Supplementary Figure 6.*  A set of eleven simulated synthetic observations was generated from a Wright-Fisher model with CNV selection coefficients sampled from an Gamma distribution where =10 of fitness effects (DFE) (black curve) . The MAP DFEs (blue curves) were directly inferred using three different subsets of eight out of eleven synthetic observations. We also inferred the selection coefficient for each observation in the set of eleven individually, and fit Gamma distributions to sets of eight inferred selection coefficients (green curves). All inferences were performed with NPE using the same amortized network to infer a posterior for each set of eight synthetic observations or each single observation.  
+
+```{r sup fig 7}
+a = multi_data %>%
+  select(obs_set, shape_real, scale_real, es, mu_real, 
+         mean_rmse_ppc, rmse95_low_ppc, rmse95_hi_ppc) %>%
+  mutate(type = "multi") %>%
+  bind_rows(single_data %>%
+              rename(shape_real = alpha_real, scale_real = beta_real) %>%
+              mutate(es = shape_real*scale_real, type = "single") %>%
+              select(obs_set, shape_real, scale_real, es, mu_real,
+                     mean_rmse_ppc, rmse95_low_ppc, rmse95_hi_ppc, type)) %>%
+  mutate(sim_params = paste(es, mu_real, sep = "_")) %>%
+  ggplot(aes(sim_params, mean_rmse_ppc, color = type)) +
+  geom_pointrange(aes(ymin = rmse95_low_ppc,ymax = rmse95_hi_ppc), alpha=0.5,
+                  position=position_dodge2(width=0.75)) +
+  facet_wrap(~shape_real) +
+  ylab("Posterior predictive check \nroot mean square error") +
+  scale_color_manual(labels = c("Directly inferred MAP distribution",
+                                  "Distribution from single observation MAPs"), name = "",
+                     #values=c("#453781", "#1f968b", "#75d054")) +
+                     values=c("blue", "darkgreen")) +
+  ggtitle("A") +
+  scale_x_discrete(name = "",
+                   labels=c("0.001_1e-07"  = expression(atop("E(s) = 0.001,", paste(delta, "  = 1e-7"))),
+                            "0.001_1e-05" = expression(atop("E(s) = 0.001,", paste(delta, "  = 1e-5"))), 
+                            "0.1_1e-07"  = expression(atop("E(s) = 0.1,", paste(delta, "  = 1e-7"))),
+                            "0.1_1e-05"  = expression(atop("E(s) = 0.1,", paste(delta, "  = 1e-5"))))) 
+
+
+b = multi_data %>%
+  select(obs_set, shape_real, scale_real, es, mu_real, 
+         mean_corr_ppc, corr95_low_ppc, corr95_hi_ppc) %>%
+  mutate(type = "multi") %>%
+  bind_rows(single_data %>%
+              rename(shape_real = alpha_real, scale_real = beta_real) %>%
+              mutate(es = shape_real*scale_real, type = "single") %>%
+              select(obs_set, shape_real, scale_real, es, mu_real,
+                     mean_corr_ppc, corr95_low_ppc, corr95_hi_ppc, type)) %>%
+  mutate(sim_params = paste(es, mu_real, sep = "_")) %>%
+  ggplot(aes(sim_params, mean_corr_ppc, color = type)) +
+  geom_pointrange(aes(ymin = corr95_low_ppc,ymax = corr95_hi_ppc), alpha=0.5,
+                  position=position_dodge2(width=0.75)) +
+  facet_wrap(~shape_real) +
+  ylab("Posterior predictive check \ncorrelation") +
+  scale_color_manual(labels = c("Directly inferred MAP distribution",
+                                  "Distribution from single observation MAPs"), name = "",
+                     #values=c("#453781", "#1f968b", "#75d054")) +
+                     values=c("blue", "darkgreen")) +
+  ggtitle("B") +
+  scale_x_discrete(name = "",
+                   labels=c("0.001_1e-07"  = expression(atop("E(s) = 0.001,", paste(delta, "  = 1e-7"))),
+                            "0.001_1e-05" = expression(atop("E(s) = 0.001,", paste(delta, "  = 1e-5"))), 
+                            "0.1_1e-07"  = expression(atop("E(s) = 0.1,", paste(delta, "  = 1e-7"))),
+                            "0.1_1e-05"  = expression(atop("E(s) = 0.1,", paste(delta, "  = 1e-5"))))) 
+
+sup = a/b
+sup
+ggsave(paste0(fig_path,"SupplementaryFig7.pdf"), plot = sup, width = 20, height = 10, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFig7.png"), plot = sup, width = 20, height = 10, units = "in")
+```
+We assessed the performance of inference from a set of observations using out-of-sample posterior predictive accuracy [94]that inferring  and  from a set of observations results in lower posterior predictive accuracy compared to inferring sC from a single observation (Supplementary File x, Supplementary Figure 7)
+
