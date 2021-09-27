@@ -58,7 +58,7 @@ def fun_likelihood_lineage_adp_opt(x):
     tau = x[1]
     tau = tau*100
                                              
-    tempt_establish = 0.005
+    tempt_establish = 0.01 #0.005
     x_mean_tau = np.interp(tau, t_seq_global, x_mean_global)
     established_size_cell_num = (2*c_global / (s - x_mean_tau) * ((s - x_mean_tau) >= tempt_establish)
                                      + 2*c_global / tempt_establish * ((s - x_mean_tau) < tempt_establish))
@@ -219,7 +219,7 @@ def fun_likelihood_lineage_est(x):
     tau = x[1]
     tau = tau*100
                                              
-    tempt_establish = 0.005
+    tempt_establish = 0.01 #0.005
     x_mean_tau = np.interp(tau, t_seq_global, x_mean_global)
     established_size_cell_num = (2*c_global / (s - x_mean_tau) * ((s - x_mean_tau) >= tempt_establish)
                                      + 2*c_global / tempt_establish * ((s - x_mean_tau) < tempt_establish))
