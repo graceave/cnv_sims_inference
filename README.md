@@ -17,7 +17,8 @@ Inference:
   
 Barcode DFE:  
 Note, population bc04 is bc01 in the paper.  
-* Extract barcodes from fastqs and cluster them (using bartender): Barcode_sequencing.Rmd
+* Extract barcodes from fastqs and cluster them (using bartender): get_bc.sh
+* Combines barcode counts from different timepoints: combine_bc.sh
 * Barcode DFE inference overview as well as checks for mean fitness convergence, etc., and supplementary figure 13: 2021-09-16_analysis_Grace.ipynb
 * Barcode DFE inference detailed: fitmut_v2_a_20210916.py
 
