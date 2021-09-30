@@ -1,5 +1,5 @@
 ---
-title: "Figure 4 and associated supplementary figures"
+title: "Figure 5 and associated supplementary figures"
 output: html_notebook
 author: Grace Avecilla
 ---
@@ -14,7 +14,7 @@ library(ggbeeswarm)
 library(reticulate)
 theme_set(theme_classic(base_size = 21))
 file_dir = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc_output/test_performance/multi/"
-fig_path = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/figs/"
+fig_path = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/figures/"
 
 ```
 
@@ -211,19 +211,19 @@ for i in r.obs_names:
         beta_real = data_m['scale_real'].iloc[0]
         mut_real = data_m['mu_real'].iloc[0]
         for j in range(3):
-                 x=np.linspace(beta_real*alpha_real/10,beta_real*alpha_real, 100)
+                 x=np.linspace(beta_real*alpha_real/10,beta_real*alpha_real*2, 100)
                  p=scipy.stats.gamma.pdf(x, alpha_real, 0, beta_real)
                  q=scipy.stats.gamma.pdf(x, data_s['single_alpha'].iloc[j], 0, data_s['single_beta'].iloc[j])
-                 kls=sum(scipy.special.kl_div(p, q))
+                 p[np.where(p == 0)[0]] = 1e-10
+                 q[np.where(q == 0)[0]] = 1e-10
+                 kls=np.ma.masked_invalid(scipy.special.kl_div(p, q)).sum()
                  q=scipy.stats.gamma.pdf(x, data_m['shape_est'].iloc[j], 0, data_m['scale_est'].iloc[j])
-                 klm=sum(scipy.special.kl_div(p, q))
+                 klm=np.ma.masked_invalid(scipy.special.kl_div(p, q)).sum()
                  t=[kls, klm, i, alpha_real, beta_real, mut_real]
                  out.append(t)
 kl_div = pd.DataFrame(out, columns = ['kl_div_single', 'kl_div_multi', 'obs_set', 'alpha_real', 'beta_real', 'mu_real'])
-kl_div.to_csv("SupplementaryTable1.csv")
+kl_div.round({'kl_div_single': 1, 'kl_div_multi': 2}).to_csv("SupplementaryTable1.csv")
 ```
-
-
 
 ```{r}
 multi_data$sim_params = factor(multi_data$sim_params, levels = c("0.001_1e-05", "0.001_1e-07", "0.1_1e-05", "0.1_1e-07"),
@@ -233,7 +233,7 @@ multi_data$sim_params = factor(multi_data$sim_params, levels = c("0.001_1e-05", 
                                                   "0.1_1e-07"  = expression(atop("s = 0.1,", paste(delta, "  = 1e-7")))))
 ```
 
-```{r fig 4}
+```{r curves f5}
 plot_dist = function(x, legend=TRUE) {
   temp = multi_data %>%
     filter(obs_set == x)
@@ -255,33 +255,33 @@ plot_dist = function(x, legend=TRUE) {
     #geom_histogram(data = temp2, aes(x = value, fill = s_type), alpha = 0.5, binwidth=bw) +
     stat_function(fun = function(x) 
            {dgamma(x, shape = temp$shape_real[1], scale = temp$scale_real[1])},# * 20 * bw}, 
-           aes(colour = "True distribution"), size = 1, alpha=1) +
+           aes(colour = "True DFE"), size = 2, alpha=1) +
     stat_function(fun = function(x) 
            {dgamma(x, shape = temp$shape_est[1], scale = temp$scale_est[1])},# * 20 * bw}, 
-           aes(colour = "Directly inferred MAP distribution"), size = 1, alpha = 0.6) +
+           aes(colour = "Observation set DFE"), size = 1, alpha = 0.6) +
     stat_function(fun = function(x) 
            {dgamma(x, shape = temp$shape_est[2], scale = temp$scale_est[2])},# * 20 * bw}, 
-           aes(colour = "Directly inferred MAP distribution"), size = 1, alpha = 0.6) +
+           aes(colour = "Observation set DFE"), size = 1, alpha = 0.6) +
     stat_function(fun = function(x) 
            {dgamma(x, shape = temp$shape_est[3], scale = temp$scale_est[3])},# * 20 * bw}, 
-           aes(colour = "Directly inferred MAP distribution"), size = 1, alpha = 0.6) +
+           aes(colour = "Observation set DFE"), size = 1, alpha = 0.6) +
     #####
       stat_function(fun = function(x) 
            {dgamma(x, shape = temp2$single_alpha[1], scale = temp2$single_beta[1])},# * 20 * bw}, 
-           aes(colour = "Distribution from single observation MAPs"), size = 1, alpha = 0.6) +
+           aes(colour = "Single observation DFE"), size = 1, alpha = 0.6) +
     stat_function(fun = function(x) 
            {dgamma(x, shape = temp2$single_alpha[2], scale = temp2$single_beta[2])},# * 20 * bw}, 
-           aes(colour = "Distribution from single observation MAPs"), size = 1, alpha = 0.6) +
+           aes(colour = "Single observation DFE"), size = 1, alpha = 0.6) +
     stat_function(fun = function(x) 
            {dgamma(x, shape = temp2$single_alpha[3], scale = temp2$single_beta[3])},# * 20 * bw}, 
-           aes(colour = "Distribution from single observation MAPs"), size = 1, alpha = 0.6) +
-    scale_color_manual(breaks = c("True distribution","Directly inferred MAP distribution",
-                                  "Distribution from single observation MAPs"), name = "",
+           aes(colour = "Single observation DFE"), size = 1, alpha = 0.6) +
+    scale_color_manual(breaks = c("True DFE","Observation set DFE",
+                                  "Single observation DFE"), name = "",
                      #values=c("#453781", "#1f968b", "#75d054")) +
-                     values=c("black", "blue", "darkgreen")) +
-    xlab("selection coefficient") +
+                     values=c("black", "darkgreen", "blue")) +
+    xlab(expression(paste("selection coefficient, ",italic("s"[C])))) +
     ylab("density") +
-    annotate("text",label=as.expression(bquote(atop("E(s)="~.(temp$es[1])~",",delta~"= "~.(temp$mu_real[1])))),
+    annotate("text",label=as.expression(bquote(atop("E(s)="~.(temp$es[1])~",",delta[C]~"= "~.(temp$mu_real[1])))),
             x=x_ann, y = y_ann, size=6)
   if(legend == TRUE) {
     return(p)
@@ -302,16 +302,44 @@ for(obs in unique(single_data$obs_set)) {
 plot_list[[4]] = plot_dist(unique(single_data$obs_set)[4], legend = TRUE) + ggtitle(al[4])
 plot_list[[8]] = plot_dist(unique(single_data$obs_set)[8], legend = TRUE) + ggtitle(al[8])
 
-fig4 = plot_list[[1]] + plot_list[[2]] + plot_list[[3]] + plot_list[[4]]
-fig4
-ggsave(paste0(fig_path,"Figure4.pdf"), plot = fig4, width = 20, height = 10, units = "in")
-ggsave(paste0(fig_path,"Figure4.png"), plot = fig4, width = 20, height = 10, units = "in")
 ```
+
+```{r insets f5}
+plot_kldiv = function(x) {
+  temp = as_tibble(py$kl_div) %>%
+    filter(obs_set == x) 
+  p=temp %>%
+    pivot_longer(starts_with("kl"), names_to = "type", values_to = "KL divergence") %>%
+    ggplot(aes(type, `KL divergence`)) +
+    geom_beeswarm(size = 3) +
+    scale_x_discrete(labels = c("Directly inferred\nMAP distribution","Distribution from\nsingle observation MAPs"))
+  return(p)
+}
+
+inset_list = list()
+i=1
+for(obs in unique(single_data$obs_set)) {
+  #print(plot_dist(obs))
+  inset_list[[i]] = plot_kldiv(obs)
+  i=i+1
+}
+
+plot_list[[1]] + inset_element(inset_list[[1]],0.4, 0.4, 1, 1, align_to = 'full')
+```
+
+
+```{r fig 5}
+fig5 = plot_list[[1]] + plot_list[[2]] + plot_list[[3]] + plot_list[[4]]
+fig5
+ggsave(paste0(fig_path,"Figure5.pdf"), plot = fig5, width = 20, height = 10, units = "in")
+ggsave(paste0(fig_path,"Figure5.png"), plot = fig5, width = 20, height = 10, units = "in")
+```
+
 *Figure 4.*  A set of eleven simulated synthetic observations was generated from a Wright-Fisher model with CNV selection coefficients sampled from an exponential distribution of fitness effects (DFE) (black curve). The MAP DFEs (blue curves) were directly inferred using three different subsets of eight out of eleven synthetic observations. We also inferred the selection coefficient for each observation in the set of eleven individually, and fit Gamma distributions to sets of eight inferred selection coefficients (green curves). All inferences were performed with NPE using the same amortized network to infer a posterior for each set of eight synthetic observations or each single observation. 
 
 
 ```{r sup fig 6}
-supp = plot_list[[5]] + plot_list[[6]] + plot_list[[7]] + plot_list[[8]] + plot_layout(design = layout)
+supp = plot_list[[5]] + plot_list[[6]] + plot_list[[7]] + plot_list[[8]] 
 supp
 ggsave(paste0(fig_path,"SupplementaryFig6.pdf"), plot = supp, width = 20, height = 10, units = "in")
 ggsave(paste0(fig_path,"SupplementaryFig6.png"), plot = supp, width = 20, height = 10, units = "in")
@@ -341,10 +369,10 @@ a = multi_data %>%
                      values=c("blue", "darkgreen")) +
   ggtitle("A") +
   scale_x_discrete(name = "",
-                   labels=c("0.001_1e-07"  = expression(atop("E(s) = 0.001,", paste(delta, "  = 1e-7"))),
-                            "0.001_1e-05" = expression(atop("E(s) = 0.001,", paste(delta, "  = 1e-5"))), 
-                            "0.1_1e-07"  = expression(atop("E(s) = 0.1,", paste(delta, "  = 1e-7"))),
-                            "0.1_1e-05"  = expression(atop("E(s) = 0.1,", paste(delta, "  = 1e-5"))))) 
+                   labels=c("0.001_1e-07"  = expression(atop("E(s) = 0.001,", paste(delta[C], "  = 1e-7"))),
+                            "0.001_1e-05" = expression(atop("E(s) = 0.001,", paste(delta[C], "  = 1e-5"))), 
+                            "0.1_1e-07"  = expression(atop("E(s) = 0.1,", paste(delta[C], "  = 1e-7"))),
+                            "0.1_1e-05"  = expression(atop("E(s) = 0.1,", paste(delta[C], "  = 1e-5"))))) 
 
 
 b = multi_data %>%
@@ -368,10 +396,10 @@ b = multi_data %>%
                      values=c("blue", "darkgreen")) +
   ggtitle("B") +
   scale_x_discrete(name = "",
-                   labels=c("0.001_1e-07"  = expression(atop("E(s) = 0.001,", paste(delta, "  = 1e-7"))),
-                            "0.001_1e-05" = expression(atop("E(s) = 0.001,", paste(delta, "  = 1e-5"))), 
-                            "0.1_1e-07"  = expression(atop("E(s) = 0.1,", paste(delta, "  = 1e-7"))),
-                            "0.1_1e-05"  = expression(atop("E(s) = 0.1,", paste(delta, "  = 1e-5"))))) 
+                   labels=c("0.001_1e-07"  = expression(atop("E(s) = 0.001,", paste(delta[C], "  = 1e-7"))),
+                            "0.001_1e-05" = expression(atop("E(s) = 0.001,", paste(delta[C], "  = 1e-5"))), 
+                            "0.1_1e-07"  = expression(atop("E(s) = 0.1,", paste(delta[C], "  = 1e-7"))),
+                            "0.1_1e-05"  = expression(atop("E(s) = 0.1,", paste(delta[C], "  = 1e-5"))))) 
 
 sup = a/b
 sup

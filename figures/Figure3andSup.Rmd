@@ -4,14 +4,14 @@ output: html_notebook
 author: Grace Avecilla
 ---
 
-What is the best model? WF is good enough - and faster and generalizable (NPE)  
+What is the best inference method?
 
 ```{r libs and functions}
 library(tidyverse)
 library(patchwork)
 library(scales)
 library(ggbeeswarm)
-theme_set(theme_classic(base_size = 15))
+theme_set(theme_classic(base_size = 20))
 
 read_est_params = function(x) {
   if(str_detect(x, "NPE")==TRUE){
@@ -71,178 +71,610 @@ read_est_params = function(x) {
   }
   return(file)
 }
-
-read_cross_sim = function(x) {
-  data = read_est_params(x)
-  data = data %>% 
-    mutate(obs_model = case_when(str_detect(x,"Chemo_obs") ~ "Chemo",
-                                 str_detect(x, "WF_obs") ~ "WF",
-                                 !str_detect(x,"obs") ~ Model))
-  return(data)
-}
 ```
 
 
 ```{r get data}
 file_dir = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc_output/test_performance/single/param_estimates/"
-files1 = list.files(path = file_dir,
-                    pattern='*est_real_params.csv')
-files1 = paste0(file_dir,files1)
-
-file_dir = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc_output/test_performance/cross_simulation/"
-files = list.files(path = paste0(file_dir, "param_estimates/"), pattern = '*est_real_params.csv')
-files = paste0(file_dir,"param_estimates/", files)
-
-files = c(files,files1)
-
-data_list = map(files,read_cross_sim)
+files = list.files(path = file_dir, pattern = '*est_real_params.csv')
+files = paste0(file_dir, files)
+data_list = map(files,read_est_params)
 data_all = do.call(rbind, data_list) %>%
   mutate(Method = str_replace(Method, "SNPE", "NPE")) %>%
   mutate(relative_error_mut = (mu_real - mu_est)/mu_real, relative_error_s = (s_real - s_est)/s_real)
-
 # percent in HDR, counted manually
-hdr_data = read_csv(paste0(file_dir, "HDR_cross_sim.csv"))
-
-
-fig_path = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/figs/"
+fig_path = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/figures/"
+hdr_data = read_csv(paste0(file_dir, "HDR.csv"))
 ```
 
-# Fig 3
+# Figure 3
 
 ```{r set up for Fig3}
-data = data_all %>% filter(n_presim == "100000" & flow_type == "NSF") %>% 
+data = data_all %>% filter(Method == "ABC-SMC" & n_presim=="10000") %>%
+  bind_rows(data_all %>% filter(n_presim == "100000" & flow_type == "NSF")) %>% 
   unite(mod_method, Model, Method, sep = " ", remove=F) %>%
-  unite(sim_params,s_real, mu_real, remove = F) %>%
-  mutate(obs_model = if_else(obs_model == "Chemo", "Chemo observation", "WF observation"))
-
-data$sim_params = factor(data$sim_params, levels = c("0.001_1e-05", "0.001_1e-07", "0.1_1e-05", "0.1_1e-07"),
-                         ordered = TRUE, labels=c(expression(atop("s = 0.001,", paste(delta, "  = 1e-5"))),
-                                                  expression(atop("s = 0.001,", paste(delta, "  = 1e-7"))),
-                                                  "0.1_1e-05"  = expression(atop("s = 0.1,", paste(delta, "  = 1e-5"))),
-                                                  "0.1_1e-07"  = expression(atop("s = 0.1,", paste(delta, "  = 1e-7")))))
-
+  unite(sim_params,s_real, mu_real, remove = F)
 
 color_vec = c("#4daf4a", "#984ea3","#e41a1c", "#377eb8", "black")
 mod_meth = c("Chemo NPE", "WF NPE", "Chemo ABC-SMC", "WF ABC-SMC", "Pseudo-observation")
 
-#labs <- c("s relative error", expression(paste(delta," relative error")), "Total relative error")
-#names(labs) <- c("relative_error_s", "relative_error_mut", "total_rel_error")
+labs <- c("s relative error", expression(paste(delta," relative error")), "Total relative error")
+names(labs) <- c("relative_error_s", "relative_error_mut", "total_rel_error")
 
 hdr_data_long = hdr_data %>%
-  filter(n_presim == 100000 & flow_type == "NSF") %>%
-  unite(mod_method, infer_model, method, sep = " ", remove=F) %>%
-  pivot_longer(cols = starts_with("0."), names_to = "sim_params", values_to = "in_hdr") %>% 
-  mutate(in_hdr_prop = in_hdr/5) %>%
-  mutate(flow_type = if_else(is.na(flow_type), "", flow_type)) %>%
-  mutate(obs_model = if_else(obs_model == "Chemo", "Chemo observation", "WF observation"))
+  filter(method == "ABC-SMC" & n_presim=="100") %>% #& rep == "1"
+  bind_rows(hdr_data %>% filter(n_presim == 100000 & flow_type == "NSF")) %>% #& rep == 1
+  unite(mod_method, model, method, sep = " ", remove=F) %>%
+  pivot_longer(cols = starts_with("0."), names_to = "sim_params", values_to = "in_hdr") 
 
 ```
 
+```{r a}
+a = hdr_data_long %>% mutate(in_hdr_prop = in_hdr/5) %>%
+  group_by(mod_method, sim_params) %>%
+  summarize(mean_in_hdr_prop = mean(in_hdr_prop)) %>%#*100) %>%
+  ggplot(aes(sim_params, mean_in_hdr_prop,color=mod_method)) +#, shape = as.factor(rep))) +
+  #geom_boxplot() +
+  geom_bar(stat="identity", position="dodge", fill = "white") +
+  geom_point(data=hdr_data_long %>% mutate(in_hdr_prop = in_hdr/5), 
+             aes(sim_params, in_hdr_prop,fill=mod_method,shape = as.factor(rep)),
+             color="black",
+             position = position_dodge2(width = 0.9),
+             size=3) +
+  scale_fill_manual(values=color_vec,name="", breaks=mod_meth) +
+  scale_color_manual(values=color_vec,name="", breaks=mod_meth) +
+  scale_shape_manual(values = c(21, 22, 23), name = "Training set") +
+  xlab("") +
+  ylab("Percent of true parameters\nin 50% HDR") +
+  scale_y_continuous(labels = scales::percent) +#, limits = c(0,100)) +
+  ggtitle("A") +
+  scale_x_discrete(labels=c("0.001_1e-5"  =expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.001_1e-7"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.1_1e-5"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.1_1e-7"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7"))))) +
+  theme(legend.position = "none") +
+  geom_hline(yintercept = 0.5, alpha = 0.7)
 
 
-```{r a3}
-a3 = data %>%
+a
+```
+*A)* Percentage of true parameters within the 50% HDR. For NPE, each training set corresponds to an independent amortized posterior trained with 100,000 simulations, with which each observation was evaluated. For ABC-SMC, each training set corresponds to independent inference procedures on each observation using a total simulation budget of 100,000 and the stopping criteria of 10 rounds or ε <= 0.002. The bar height shows the average of three training sets.
+
+```{r b}
+b = data %>% mutate(fit_hdi_width= 10^fit_95hdi_high - 10^fit_95hdi_low) %>%
+  ggplot(aes(sim_params, fit_hdi_width, color = mod_method))  +
+  geom_boxplot(outlier.shape = NA, position = position_dodge2(width=1))+
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  geom_beeswarm(aes(fill=mod_method, shape = as.factor(presim_rep)), dodge.width = .7, alpha = 0.5) +#,dodge.width = 1, size=1, cex=3, shape = 21, color="black") +
+  #geom_point(aes(fill=mod_method,shape = as.factor(presim_rep)),
+    #         color="black",
+     #        position = position_dodge2(width = 0.7),
+      #       size=1.5) +
+  scale_shape_manual(values = c(21, 22, 23), name = "Training set") +
+  scale_fill_manual(values=color_vec, 
+                     name="",
+                     limits=mod_meth, guide = 'none') +
+  ylab("s 95% HDI width") +
+  xlab("") +
+  theme(legend.position = "none") +
+  scale_x_discrete(labels=c("0.001_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                            "0.001_1e-05" = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))), 
+                            "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7"))),
+                            "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))))) +
+  ggtitle("B")
+
+
+b
+```
+
+*B)* Distribution of widths of the fitness effect s 95% highest density interval (HDI) calculated as the difference between the 97.5 percentile and 2.5 percentile, for each inferred posterior distribution. 
+```{r c}
+c = data %>%
+  mutate(mut_hdi_width= mut_95hdi_high - mut_95hdi_low) %>%
+  ggplot(aes(sim_params, mut_hdi_width, color = mod_method)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge2(width=1))+
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  geom_beeswarm(aes(fill=mod_method, shape = as.factor(presim_rep)), dodge.width = .7, alpha = 0.5) +
+  scale_shape_manual(values = c(21, 22, 23), name = "Training set") +
+  scale_fill_manual(values=color_vec, 
+                    name="",
+                    limits=mod_meth, guide = 'none') +
+  scale_y_log10() +
+  ylab(expression(paste(delta," 95% HDI width, log10"))) +
+  xlab("") +
+ scale_x_discrete(labels=c("0.001_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                            "0.001_1e-05" = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))), 
+                            "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7"))),
+                            "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))))) +
+  #theme(legend.position = "none") +
+  ggtitle("C")
+c
+```
+*C)* Distribution of the number of orders of magnitude encompassed by the mutation rate 𝛿 95% HDI, calculated as difference of the base 10 logarithms of the 97.5 percentile and 2.5 percentile, for each inferred posterior distribution
+
+
+```{r d}
+data$sim_params = factor(data$sim_params, levels = c("0.001_1e-05", "0.001_1e-07", "0.1_1e-05", "0.1_1e-07"),
+                         ordered = TRUE, labels=c(expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7")))))
+
+
+
+
+data_d = data %>%
   pivot_longer(cols = c("mu_ratio", "s_ratio"), 
                names_to = "error_type", values_to = "log10 ( MAP parameter / true parameter )") %>%
-  mutate(`log10 ( MAP parameter / true parameter )` = log10(`log10 ( MAP parameter / true parameter )`)) %>%
-  filter(obs_model == "Chemo observation") %>%
-  mutate(obs_model = str_replace(obs_model, " ","~")) %>%
+  mutate(`log10 ( MAP parameter / true parameter )` = log10(`log10 ( MAP parameter / true parameter )`))
+ # mutate(total_rel_error = relative_error_mut+relative_error_s) %>%
+ # pivot_longer(cols = c("relative_error_mut", "relative_error_s"),  #"total_rel_error", 
+  #             names_to = "error_type", values_to = "Relative error") 
+
+d = data_d %>%
   ggplot(aes(error_type,`log10 ( MAP parameter / true parameter )`, color=mod_method)) +
   geom_boxplot(outlier.shape = NA, position = position_dodge2(width=1))+
   scale_color_manual(values=color_vec, 
-                     name="Inference model\nand method",
+                     name="",
                      breaks=mod_meth) +
-  geom_beeswarm(aes(fill=mod_method, shape = as.factor(presim_rep)), dodge.width = .75, alpha = 0.5) +
+  geom_beeswarm(aes(fill=mod_method, shape = as.factor(presim_rep)), dodge.width = .7, alpha = 0.5) +
   scale_shape_manual(values = c(21, 22, 23), name = "Training set") +
   scale_fill_manual(values=color_vec, 
                     name="",
                     limits=mod_meth, guide = 'none') +
   xlab("") +
   #ylab("MAP relative error") +
-  facet_wrap(~sim_params, labeller=label_parsed, scales = "free") +
-  scale_x_discrete(labels=c("s_ratio"  = "s",
-                            "mu_ratio" = expression(delta))) + 
+  facet_wrap(~sim_params, labeller=label_parsed, scales = "free", ncol=4) +
+  scale_x_discrete(labels=c("s_ratio"  = expression(italic("s"[C])),
+                            "mu_ratio" = expression(italic(delta[C])))) + 
                             #"total_rel_error"  = "total")) +
   #xlab("Relative error type") +
-  theme(panel.spacing.y=unit(1, "lines"),panel.spacing.x=unit(1, "lines")) +
-  ggtitle("A") +
-  geom_hline(yintercept = 0, alpha = 0.5)
-a3
+  theme(panel.spacing.x=unit(1, "lines")) +
+  ggtitle("D") +
+  theme(legend.position = "none") +
+  geom_hline(yintercept = 0, alpha = 0.5) 
+d
 ```
+*D)* Ratio of MAP estimate to true parameters as compared to true parameters, log transformed for s and  δC. Note that each panel has a different y axis. Zero (grey line) indicates no difference between MAP and true parameters.
+```{r E}
+e = data %>%
+  ggplot(aes(mod_method,mean_rmse_ppc, color=mod_method, fill=mod_method, shape=as.factor(presim_rep))) +
+  #geom_point(position=position_jitter()) +
+  geom_pointrange(aes(ymin = rmse95_low_ppc,ymax = rmse95_hi_ppc), alpha=0.5,
+                  position=position_dodge2(width=0.75)) +
+  scale_shape_manual(values = c(21, 22, 23), name = "Training set") +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  scale_fill_manual(values=color_vec, 
+                    name="",
+                    limits=mod_meth, guide = 'none') +
+  facet_wrap(~sim_params, labeller=label_parsed, ncol=4,strip.position="bottom") +
+  xlab("") +
+  #theme(legend.position = "none") +
+  ylab("Posterior predictive check \nroot mean square error") +
+  theme(axis.text.x=element_blank()) +
+  theme(legend.position = "none") +
+  ggtitle("E")
+e
+```
+
+*E)* Mean and 95% confidence interval for RMSE of 50 posterior predictions as compared to the synthetic observation for which inference was performed.
 
 ```{r Figure 3}
-fig3 = a3
+layout <- "
+AABBCC
+DDDDDD
+EEEEEE
+"
+fig3 = a + b + c + d + e + 
+  plot_layout(design = layout) # guides = "collect"
 fig3
-ggsave(paste0(fig_path,"Figure3.pdf"), plot = fig3, width = 18, height = 15, units = "in")
-ggsave(paste0(fig_path,"Figure3.png"), plot = fig3, width = 10, height = 8, units = "in")
+ggsave(paste0(fig_path,"Figure3.pdf"), plot = fig3, width = 22, height = 17, units = "in")
+ggsave(paste0(fig_path,"Figure3.png"), plot = fig3, width = 22, height = 17, units = "in")
 
 ```
-*Figure 3* These show the results of inference on five simulated synthetic observations generated using either the Wright-Fisher (WF) or chemostat (Chemo) model per combination of fitness effect s and mutation rate 𝛿C. We performed inference on each synthetic observation using either the Wright-Fisher (WF) or chemostat (Chemo) model. For NPE, each training set corresponds to an independent amortized posterior trained with 100,000 simulations, with which each synthetic observation was evaluated. Boxplots and points show the ratio of MAP estimate to true parameters as compared to true parameters, log transformed, for s and  δC.
 
-```{r sup fig 5}
-s_a = hdr_data_long %>%
-  group_by(obs_model,mod_method, sim_params, HDR) %>%
+
+# Supplemental Figures
+
+```{r sup fig 1}
+data_s = data_all %>% filter(n_presim == "100000" & flow_type == "MAF") %>% # & presim_rep == "2"
+  unite(mod_method, Model, Method, flow_type, sep = " ", remove=F) %>%
+  unite(sim_params,s_real, mu_real, remove = F)
+
+hdr_data_long = hdr_data %>% filter(n_presim == 100000 & flow_type == "MAF") %>% 
+  unite(mod_method, model, method, flow_type, sep = " ", remove=F) %>%
+  pivot_longer(cols = starts_with("0."), names_to = "sim_params", values_to = "in_hdr") 
+
+a_supp = hdr_data_long %>% mutate(in_hdr_prop = in_hdr/5) %>%
+  group_by(mod_method, sim_params) %>%
   summarize(mean_in_hdr_prop = mean(in_hdr_prop)) %>%#*100) %>%
-  filter(HDR == "50%") %>%
   ggplot(aes(sim_params, mean_in_hdr_prop,fill=mod_method)) +#, shape = as.factor(rep))) +
   #geom_boxplot() +
   geom_bar(stat="identity", position="dodge") +
-  geom_point(data=hdr_data_long %>%
-               filter(method == "NPE" & flow_type != "MAF") %>%
-               filter(n_presim == 100000) %>%
-               filter(HDR=="50%") %>%
-               mutate(in_hdr_prop = in_hdr/5), 
+  geom_point(data=hdr_data_long %>% mutate(in_hdr_prop = in_hdr/5), 
              aes(sim_params, in_hdr_prop,fill=mod_method,shape = as.factor(rep)),
              color="black",
-             position = position_dodge2(width = 1),
+             position = position_jitterdodge(dodge.width = 1),
              size=3) +
-  scale_fill_manual(values=color_vec,name="Inference model\nand method", breaks=mod_meth) +
+  scale_fill_manual(values=color_vec,name="", breaks=mod_meth) +
   scale_shape_manual(values = c(21, 22, 23), name = "Training set") +
   xlab("") +
   ylab("Percent of true parameters\nin 50% HDR") +
   scale_y_continuous(labels = scales::percent) +#, limits = c(0,100)) +
   ggtitle("A") +
-  scale_x_discrete(labels=c("0.001_1e-7"  = expression(atop("s = 0.001,", paste(delta, "  = 1e-7"))),
-                                                                                  "0.001_1e-5" = expression(atop("s = 0.001,", paste(delta, "  = 1e-5"))), 
-                                                                                  "0.1_1e-7"  = expression(atop("s = 0.1,", paste(delta, "  = 1e-7"))),
-                                                                                  "0.1_1e-5"  = expression(atop("s = 0.1,", paste(delta, "  = 1e-5"))))) +
-  facet_wrap(~obs_model)
+  #ylim(c(0,100)) +
+ scale_x_discrete(labels=c("0.001_1e-5"  =expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.001_1e-7"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.1_1e-5"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.1_1e-7"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7")))))
 
-s_b = hdr_data_long %>%
-  filter(method == "NPE" & flow_type != "MAF") %>%
-  filter(n_presim == 100000) %>%
-  group_by(obs_model,mod_method, sim_params, HDR) %>%
-  summarize(mean_in_hdr_prop = mean(in_hdr_prop)) %>%#*100) %>%
-  filter(HDR == "95%") %>%
-  ggplot(aes(sim_params, mean_in_hdr_prop,fill=mod_method)) +#, shape = as.factor(rep))) +
-  #geom_boxplot() +
-  geom_bar(stat="identity", position="dodge") +
-  geom_point(data=hdr_data_long %>%
-               filter(method == "NPE" & flow_type != "MAF") %>%
-               filter(n_presim == 100000) %>%
-               filter(HDR=="95%") %>%
-               mutate(in_hdr_prop = in_hdr/5), 
-             aes(sim_params, in_hdr_prop,fill=mod_method,shape = as.factor(rep)),
-             color="black",
-             position = position_dodge2(width = 1),
-             size=3) +
-  scale_fill_manual(values=color_vec,name="Inference model\nand method", breaks=mod_meth) +
+b_supp = data_s %>% mutate(fit_hdi_width= 10^fit_95hdi_high - 10^fit_95hdi_low) %>%
+  ggplot(aes(sim_params, fit_hdi_width, color = mod_method)) + #, shape = as.factor(presim_rep))) +
+  #geom_point(position = position_jitterdodge()) +
+  geom_boxplot() +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  ylab("s 95% HDI width") +
+  xlab("") +
+  theme(legend.position = "none") +
+scale_x_discrete(labels=c("0.001_1e-05"  =expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.001_1e-7"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-07"))),
+                                                  "0.1_1e-5"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-50"))),
+                                                  "0.1_1e-7"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-07"))))) +
+  ggtitle("B")
+
+c_supp = data_s %>%
+  mutate(mut_hdi_width= mut_95hdi_high - mut_95hdi_low) %>%
+  ggplot(aes(sim_params, mut_hdi_width, color = mod_method)) +#, shape = as.factor(presim_rep))) +
+  #geom_point(position = position_jitterdodge()) +
+  geom_boxplot() +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  scale_y_log10() +
+  ylab(expression(paste(delta," 95% HDI width, log10"))) +
+  xlab("") +
+scale_x_discrete(labels=c("0.001_1e-05"  =expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.001_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7"))))) +
+  ggtitle("C")
+
+data_s$sim_params = factor(data_s$sim_params, levels = c("0.001_1e-05", "0.001_1e-07", "0.1_1e-05", "0.1_1e-07"),
+                         ordered = TRUE, labels=c(expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7")))))
+
+
+
+data_d = data_s %>%
+  pivot_longer(cols = c("mu_ratio", "s_ratio"), 
+               names_to = "error_type", values_to = "log10 ( MAP parameter / true parameter )") %>%
+  mutate(`log10 ( MAP parameter / true parameter )` = log10(`log10 ( MAP parameter / true parameter )`))
+
+d_supp = data_d %>% 
+  ggplot(aes(error_type,`log10 ( MAP parameter / true parameter )`, color=mod_method)) +
+  geom_boxplot() +
+  geom_point(aes(shape=presim_rep),position = position_jitterdodge()) +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  xlab("") +
+  ylab("MAP relative error") +
+  facet_wrap(~sim_params, labeller=label_parsed, scales = "free", ncol=4) +
+  scale_x_discrete(labels=c("s_ratio"  = expression(italic("s"[C])),
+                            "mu_ratio" = expression(italic(delta[C]))))+
+  xlab("Relative error type") +
+  theme(panel.spacing.x=unit(1, "lines")) +
+  ggtitle("D")
+
+
+e_supp = data_s %>%
+  ggplot(aes(mod_method,mean_rmse_ppc, color=mod_method)) +
+  #geom_point(position=position_jitter()) +
+  geom_pointrange(aes(ymin = rmse95_low_ppc,ymax = rmse95_hi_ppc), alpha=0.5,
+                  position=position_jitter()) +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  theme(legend.position = "none") +
+  facet_wrap(~sim_params, labeller=label_parsed, ncol=4,strip.position="bottom") +
+  xlab("") +
+  ylab("Posterior predictive check \nroot mean square error") +
+  theme(axis.text.x=element_blank()) +
+  ggtitle("E")
+
+f_supp = data_s %>%
+  #  ggplot(aes(sim_params,rmse_map, color=mod_method)) +
+  ggplot(aes(mod_method,rmse_map, color=mod_method)) +
+  facet_wrap(~sim_params, labeller=label_parsed, ncol=4,strip.position="bottom") +
+  geom_boxplot() +
+  geom_point(position = position_jitterdodge()) +
+  theme(axis.text.x=element_blank()) +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  xlab("") +
+  ylab("MAP posterior prediction \nroot mean square error") +
+  ggtitle("F")
+
+
+g_supp = data_s %>%
+  ggplot(aes(mod_method,mean_corr_ppc, color=mod_method)) +
+  #geom_point(position=position_jitter()) +
+  geom_pointrange(aes(ymin = corr95_low_ppc,ymax = corr95_hi_ppc), alpha=0.5,
+                  position=position_jitter()) +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  facet_wrap(~sim_params, labeller=label_parsed, ncol=4,strip.position="bottom") +
+  xlab("") +
+  ylab("Posterior predictive check \ncorrelation coefficient") +
+  theme(axis.text.x=element_blank()) +
+  theme(legend.position = "none") +
+  ggtitle("G")
+
+h_supp = data_s %>%
+  #  ggplot(aes(sim_params,corr_map, color=mod_method)) +
+  ggplot(aes(mod_method,corr_map, color=mod_method)) +
+  facet_wrap(~sim_params, labeller=label_parsed, ncol=4,strip.position="bottom") +
+  geom_boxplot() +
+  geom_point(position = position_jitterdodge()) +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  theme(axis.text.x=element_blank()) +
+  ylim(c(-0.2,1)) +
+  xlab("") +
+  ylab("MAP posterior prediction \ncorrelation coefficient") +
+  ggtitle("H")
+
+layout <- "
+AABBCC
+DDDDDD
+EEEFFF
+GGGHHH
+"
+supp = a_supp + b_supp + c_supp + d_supp + e_supp + f_supp + g_supp + h_supp +
+  plot_layout(design = layout)
+supp
+ggsave(paste0(fig_path,"SupplementaryFig1.pdf"), plot = supp, width = 25, height = 18, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFig1.png"), plot = supp, width = 25, height = 18, units = "in")
+```
+*Supplementary Figure 1* Performance assessment of NPE with MAF using single simulated synthetic observations. These show the results of inference on five simulated synthetic observations using either the Wright-Fisher (WF) or chemostat (Chemo) model per combination of fitness effect s and mutation rate 𝛿C. Here we show the results of performing one training set with NPE with MAF using 100,000 simulations for training and using the same amortized network to infer a posterior for each replicate synthetic observation. A) Percentage of true parameters within the 50% HDR. B) Distribution of widths of the fitness effect s 95% highest density interval (HDI) calculated as the difference between the 97.5 percentile and 2.5 percentile, for each inferred posterior distribution. C) Distribution of the number of orders of magnitude encompassed by the mutation rate 𝛿 95% HDI, calculated as difference of the base 10 logarithms of the 97.5 percentile and 2.5 percentile, for each inferred posterior distribution. D) Relative error of MAP estimate as compared to true parameters for s,  δC, and total relative error. Note that each panel has a different y axis. E) Mean and 95% confidence interval for RMSE of 50 posterior predictions as compared to the synthetic observation for which inference was performed. F) RMSE of posterior prediction generated with MAP parameters as compared to the synthetic observation for which inference was performed. G) Mean and 95% confidence interval for correlation coefficient of 50 posterior predictions compared to the synthetic observation for which inference was performed. H) Correlation coefficient of posterior prediction posterior prediction generated with MAP parameters compared to the synthetic observation for which inference was performed.
+
+```{r sup fig 2}
+data = data_all %>%
+  mutate(flow_type = if_else(!is.na(flow_type),flow_type, "")) %>%
+  unite(mod_method, Model, Method, flow_type, sep = " ", remove=F) %>%
+  unite(sim_params,s_real, mu_real, remove = F)
+
+color_vec = c("#4daf4a", "#984ea3","#e41a1c", "#377eb8","#f781bf", "#999999")
+mod_meth = c("Chemo NPE NSF", "WF NPE NSF", "Chemo ABC-SMC ", "WF ABC-SMC ", "Chemo NPE MAF", "WF NPE MAF")
+
+#### supplement map rmse and correlation ####
+
+data$sim_params = factor(data$sim_params, levels = c("0.001_1e-05", "0.001_1e-07", "0.1_1e-05", "0.1_1e-07"),
+                         ordered = TRUE, labels=c(expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7")))))
+
+data_t = data %>% filter(Method == "NPE" & n_presim == "100000") %>%
+  bind_rows(data %>% filter(Method == "ABC-SMC" & n_presim == "10000"))
+
+a_supp = data_t %>%
+  #  ggplot(aes(sim_params,rmse_map, color=mod_method)) +
+  filter(flow_type != "MAF") %>%
+  ggplot(aes(mod_method,rmse_map, color=mod_method, shape=as.factor(presim_rep))) +
+  facet_wrap(~sim_params, labeller=label_parsed, ncol=4,strip.position="bottom") +
+  geom_boxplot() +
+  geom_point(aes(fill=mod_method),position = position_jitterdodge()) +
+  scale_shape_manual(values = c(21, 22, 23), name = "Training set") +
+  theme(legend.position = "none") +
+  theme(axis.text.x=element_blank()) +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  scale_fill_manual(values=color_vec, 
+                    name="",
+                    limits=mod_meth, guide = 'none') +
+  xlab("") +
+  ylab("MAP posterior prediction \nroot mean square error") +
+  ggtitle("A")
+
+b_supp = data_t %>%
+  filter(flow_type != "MAF") %>%
+  #  ggplot(aes(sim_params,corr_map, color=mod_method)) +
+  ggplot(aes(mod_method,corr_map, color=mod_method, shape=as.factor(presim_rep))) +
+  facet_wrap(~sim_params, labeller=label_parsed, ncol=4,strip.position="bottom") +
+  geom_boxplot() +
+  geom_point(aes(fill=mod_method),position = position_jitterdodge()) +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  theme(axis.text.x=element_blank()) +
+  ylim(c(-0.2,1)) +
+  scale_fill_manual(values=color_vec, 
+                    name="",
+                    limits=mod_meth, guide = 'none') +
   scale_shape_manual(values = c(21, 22, 23), name = "Training set") +
   xlab("") +
-  ylab("Percent of true parameters\nin 95% HDR") +
-  scale_y_continuous(labels = scales::percent) +#, limits = c(0,100)) +
-  ggtitle("B") +
-  scale_x_discrete(labels=c("0.001_1e-7"  = expression(atop("s = 0.001,", paste(delta, "  = 1e-7"))),
-                                                                                  "0.001_1e-5" = expression(atop("s = 0.001,", paste(delta, "  = 1e-5"))), 
-                                                                                  "0.1_1e-7"  = expression(atop("s = 0.1,", paste(delta, "  = 1e-7"))),
-                                                                                  "0.1_1e-5"  = expression(atop("s = 0.1,", paste(delta, "  = 1e-5"))))) +
-  facet_wrap(~obs_model)
+  theme(legend.position = "none") +
+  ylab("MAP posterior prediction \ncorrelation coefficient") +
+  ggtitle("B")
 
-supp = s_a / s_b
+c_supp = data_t %>%
+  filter(flow_type != "MAF") %>%
+  ggplot(aes(mod_method,mean_corr_ppc, color=mod_method,fill=mod_method, shape=as.factor(presim_rep))) +
+  #geom_point(position=position_jitter()) +
+  geom_pointrange(aes(ymin = corr95_low_ppc,ymax = corr95_hi_ppc), alpha=0.5,
+                  position=position_dodge2(width=0.75)) +
+  scale_shape_manual(values = c(21, 22, 23), name = "Training set") +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  scale_fill_manual(values=color_vec, 
+                    name="",
+                    limits=mod_meth, guide = 'none') +
+  facet_wrap(~sim_params, labeller=label_parsed, ncol=4,strip.position="bottom") +
+  xlab("") +
+  ylab("Posterior predictive check \ncorrelation coefficient") +
+  theme(axis.text.x=element_blank()) +
+  ggtitle("C")
+
+supp = a_supp + b_supp + c_supp
 supp
-ggsave(paste0(fig_path,"SupplementaryFig5.pdf"), plot = supp, width = 18, height = 15, units = "in")
-ggsave(paste0(fig_path,"SupplementaryFig5.png"), plot = supp, width = 18, height = 15, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFig2.pdf"), plot = supp, width = 25, height = 8, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFig2.png"), plot = supp, width = 25, height = 8, units = "in")
+
 
 ```
-*Supplemental Figure 5* These show the results of inference on five simulated synthetic observations generated using either the Wright-Fisher (WF) or chemostat (Chemo) model per combination of fitness effect s and mutation rate 𝛿C. We performed inference on each synthetic observation using both models. For NPE, each training set corresponds to an independent amortized posterior trained with 100,000 simulations, with which each synthetic observation was evaluated. A) Percentage of true parameters within the 50% HDR. The bar height shows the average of three training sets. B) Percentage of true parameters within the 95% HDR. The bar height shows the average of three training sets.
+*Supplementary Figure 2* These show the results of inference on five simulated single synthetic observations using either the Wright-Fisher (WF) or chemostat (Chemo) model per combination of fitness effect s and mutation rate 𝛿C. Here we show the results of performing one training set with NPE with NSF using 100,000 simulations for training and using the same amortized network to infer a posterior for each replicate synthetic observation. A) RMSE of posterior prediction generated with MAP parameters as compared to the synthetic observation for which inference was performed. B) Correlation coefficient of posterior prediction posterior prediction generated with MAP parameters compared to the synthetic observation for which inference was performed. C) Mean and 95% confidence interval for correlation coefficient of 50 posterior predictions compared to the synthetic observation for which inference was performed.
 
+```{r sup fig 3}
+data = data_all %>%
+  mutate(flow_type = if_else(!is.na(flow_type),flow_type, "")) %>%
+  unite(mod_method, Model, Method, flow_type, sep = " ", remove=F) %>%
+  unite(sim_params,s_real, mu_real, remove = F)
+# aic
+supp_a = data %>%
+  ggplot(aes(sim_params, aic, color = mod_method)) +
+  geom_point(position = position_jitterdodge()) +
+  geom_boxplot() +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) + 
+  #geom_beeswarm(dodge.width = 0.75, alpha =0.5) +
+  ylab("AIC") +
+  xlab("") +
+  facet_wrap(~n_presim) +
+  scale_x_discrete(labels=c("0.001_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                            "0.001_1e-05" = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))), 
+                            "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7"))),
+                            "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))))) +
+  ggtitle("A") +
+  theme(legend.position = "none") +
+  scale_y_continuous(breaks = seq(-15, 10, by = 1))
+
+# waic1
+supp_b = data %>%
+  ggplot(aes(sim_params, waic1, color = mod_method)) +
+  geom_point(position = position_jitterdodge()) +
+  geom_boxplot() +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) + 
+  #geom_beeswarm(dodge.width = 0.75, alpha =0.5) +
+  ylab("WAIC1") +
+  xlab("") +
+  facet_wrap(~n_presim) +
+ scale_x_discrete(labels=c("0.001_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                            "0.001_1e-05" = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))), 
+                            "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7"))),
+                            "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))))) +
+  ggtitle("B") +
+  theme(legend.position = "none")+
+  scale_y_continuous(breaks = seq(-15, 10, by = 1))
+
+# waic2
+supp_c = data %>%
+  ggplot(aes(sim_params, waic2, color = mod_method)) +
+  geom_point(position = position_jitterdodge()) +
+  geom_boxplot() +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) + 
+  #geom_beeswarm(dodge.width = 0.75, alpha =0.5) +
+  ylab("WAIC2") +
+  xlab("") +
+  facet_wrap(~n_presim) +
+scale_x_discrete(labels=c("0.001_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                            "0.001_1e-05" = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))), 
+                            "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7"))),
+                            "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))))) +
+  ggtitle("C")+
+  scale_y_continuous(breaks = seq(-15, 10, by = 1))
+
+supp = supp_a + supp_b + supp_c
+supp
+ggsave(paste0(fig_path,"SupplementaryFig3.pdf"), plot = supp, width = 34, height = 10, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFig3.png"), plot = supp, width = 34, height = 10, units = "in")
+```
+*Supplementary Figure 3* WAIC and AIC for inference on single observations.These show the results of inference on single synthetic observations using either the Wright-Fisher (WF) or chemostat (Chemo) model per combination of fitness effect s and mutation rate 𝛿C, using each different method. The facets show results of inference with simulation budgets of 10,000 or 100,000.
+
+```{r sup fig 4}
+data_a = data %>%
+  pivot_longer(cols = c("mu_ratio", "s_ratio"), 
+               names_to = "error_type", values_to = "log10 ( MAP parameter / true parameter )") %>%
+  mutate(`log10 ( MAP parameter / true parameter )` = log10(`log10 ( MAP parameter / true parameter )`))
+
+
+
+a_supp = data_a %>%
+  ggplot(aes(error_type,`log10 ( MAP parameter / true parameter )`, color=mod_method,)) +
+  geom_boxplot() +
+  #geom_point(aes(shape=presim_rep),position = position_jitterdodge()) +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  xlab("") +
+  ylab("MAP relative error") +
+  facet_grid(sim_params~n_presim, scales="free", labeller=label_parsed) +
+  #facet_wrap(~sim_params, labeller=label_parsed, scales = "free", ncol=4) +
+  scale_x_discrete(labels=c("s_ratio"  = expression(italic("s"[C])),
+                            "mu_ratio" = expression(italic(delta[C])))) +
+  theme(legend.position = "none")+
+  xlab("Relative error type") +
+  theme(panel.spacing.x=unit(1, "lines")) +
+  geom_hline(yintercept = 0, alpha = 0.5) +
+  ggtitle("A")
+
+b_supp = data %>% mutate(fit_hdi_width= 10^fit_95hdi_high - 10^fit_95hdi_low) %>%
+  ggplot(aes(n_presim, fit_hdi_width, color = mod_method)) + #, shape = as.factor(presim_rep))) +
+  #geom_point(position = position_jitterdodge()) +
+  geom_boxplot() +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  ylab("s 95% HDI width") +
+  xlab("Simulation budget") +
+  theme(legend.position = "none") +
+  scale_x_discrete(labels=c("0.001_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                            "0.001_1e-05" = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))), 
+                            "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7"))),
+                            "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))))) +
+  ggtitle("B") +
+  facet_wrap(~sim_params, labeller=label_parsed, scales = "free", ncol=4)
+  #facet_grid(sim_params~n_presim, scales="free")
+
+c_supp = data %>%
+  mutate(mut_hdi_width= mut_95hdi_high - mut_95hdi_low) %>%
+  ggplot(aes(n_presim, mut_hdi_width, color = mod_method)) +#, shape = as.factor(presim_rep))) +
+  #geom_point(position = position_jitterdodge()) +
+  geom_boxplot() +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  scale_y_log10() +
+  ylab(expression(paste(delta," 95% HDI width, log10"))) +
+  xlab("Simulation budget") +
+  ggtitle("C") +
+  facet_wrap(~sim_params, labeller=label_parsed, scales = "free", ncol=4)
+
+supp = a_supp + b_supp + c_supp
+supp
+ggsave(paste0(fig_path,"SupplementaryFig4.pdf"), plot = supp, width = 34, height = 8, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFig4.png"), plot = supp, width = 34, height = 8, units = "in")
+
+
+```
+*Supplementary Figure 4* Effect of simulation budget on relative error of MAP estimate and width of HDIs for inference on single synthetic observations. The grey line in (A) indicates a relative error of zero (i.e., no difference between MAP parameters and true parameters).

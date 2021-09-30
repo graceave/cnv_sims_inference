@@ -1,27 +1,23 @@
 ---
-title: "Figure 6 and associated supplementary figures"
+title: "Figure 5 and associated supplementary figures"
 output: html_notebook
 author: Grace Avecilla
 ---
 
-```{r set up}
+```{r}
 library(tidyverse)
 library(patchwork)
-library(groupdata2)
-library(ggridges)
+library(scales)
+library(ggbeeswarm)
+library(reticulate)
 theme_set(theme_classic(base_size = 21))
-bar_dir = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/barcode_method/"
-param_dir = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc_output/Lauer2018/"
-fit_dir = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/fitness_assays/"
-fig_path = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/figs/"
+
+param_dir = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc_output/Lauer2018/single/param_estimates/"
+posterior_dir = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc_output/Lauer2018/single/posteriors/"
+fig_path = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/figures/"
 ```
 
-```{r cnv barcodes}
-cnv_barcodes = read_csv(paste0(bar_dir,"CNV_barcodes.csv")) %>%
-  mutate(CNV = "CNV")
-```
-
-```{r inferred params function}
+```{r}
 read_est_params = function(x) {
   if(str_detect(x, "NPE")==TRUE){
     file = read_csv(x, col_names = c("Model","Method","col_to_sep","col_to_sep2",
@@ -31,7 +27,8 @@ read_est_params = function(x) {
                                      "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
                                      "fit_95hdi_low","fit_95hdi_high",
                                      "mut_95hdi_low","mut_95hdi_high",
-                                     "aic", "dic", "waic1", "waic2")) %>%
+                                     "aic", "dic", "waic1", "waic2"),
+                    col_types = cols()) %>%
       separate(col_to_sep, into = c(NA,NA,NA,"n_presim", "presim_rep"), 
                sep="([_.])") %>%
       separate(col_to_sep2, into = c("Population", "s_est"), 
@@ -50,7 +47,8 @@ read_est_params = function(x) {
                                      "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
                                      "fit_95hdi_low","fit_95hdi_high",
                                      "mut_95hdi_low","mut_95hdi_high",
-                                     "aic", "dic", "waic1", "waic2")) %>%
+                                     "aic", "dic", "waic1", "waic2"),
+                    col_types = cols()) %>%
       separate(col_to_sep, into = c("Population", "s_est"), 
                sep="([-])") %>%
       mutate(presim_rep = case_when(str_detect(x, "_1_") ~ "1",
@@ -75,213 +73,414 @@ read_est_params = function(x) {
 }
 ```
 
-
-```{r get lineage tracking data}
-bc04 = read_csv(paste0(bar_dir,'2021-09_data_analysis/data_bc04/bc04_cluster.csv'), 
-                col_names = c("barcode", "g5","g37","g62","g99","g124","g149")) 
-bc04_filtered_barcodes = read_csv(paste0(bar_dir,'./2021-09_data_analysis/data_bc04/bc04_bcfiltered_barcodes.csv'),
-                                  col_names = F)
-
-bc_04_filtered = bc04 %>% 
-  #select only lineages that made it through the filter for dfe
-  filter(barcode %in% bc04_filtered_barcodes$X1) %>%
-  mutate(population = "bc01")
-
-bc_04_freq = bc_04_filtered %>%
-  #convert from reads to relative frequency
-  mutate(g5 = g5/sum(g5),
-         g37 = g37/sum(g37),
-         g62 = g62/sum(g62),
-         g99 = g99/sum(g99),
-         g124 = g124/sum(g124),
-         g149 = g149/sum(g149)) %>%
-  pivot_longer(cols=starts_with("g"), names_to = "generation", values_to = "relative_freq") %>%
-  mutate(generation = str_remove(generation, "g")) %>%
-  mutate(cell_number = relative_freq*3e8)
-
-#filter out ugly lineages for plotting
-alldata = bc_04_filtered %>%
-  left_join(cnv_barcodes, by= c("barcode" = "barcode", "population"="population")) %>% 
-  filter(g5 > 0) %>%
-  filter(!(g37 == 0 & g62 >0)) %>%
-  filter(!(g62 == 0 & g99 >0)) %>%
-  filter(!(g99 == 0 & g124 >0)) %>%
-  filter(!(g124 == 0 & g149 >0)) %>%
-  mutate(CNV = if_else(is.na(CNV), "noCNV", "CNV")) %>%
-  mutate(g5 = g5/sum(g5),
-         g37 = g37/sum(g37),
-         g62 = g62/sum(g62),
-         g99 = g99/sum(g99),
-         g124 = g124/sum(g124),
-         g149 = g149/sum(g149)) %>%
-  pivot_longer(cols=starts_with("g"), names_to = "generation", values_to = "relative_freq") %>%
-  mutate(generation = str_remove(generation, "g")) %>%
-  mutate(cell_number = relative_freq*3e8)
+```{r}
+read_posterior_NPE = function(x,d){
+  t=unlist(str_split(x, "_"))
+  if(str_detect(x, "nsf")) {
+    data = read_csv(paste0(d,x), col_names = c("s_est","mu_est"), col_types = cols()) %>%
+      mutate(Model = t[2], Method = t[3], n_presim = t[5], presim_rep = str_sub(t[6], end=1)) %>%
+      mutate(flow_type = "NSF") %>%
+      mutate(generations = if_else(str_detect(x, "116"),116,267)) %>%
+      mutate(Population = if_else(str_detect(x,"gln"), 
+                                  paste(str_sub(t[6], 2), t[7], sep = "_"), str_sub(t[6], 2))) %>%
+      mutate(s_est_10 = s_est,
+             mu_est_10 = mu_est,
+             s_est = 10^s_est,
+             mu_est = 10^mu_est)
+  } else {
+    data = read_csv(paste0(d,x), col_names = c("s_est","mu_est"), col_types = cols()) %>%
+      mutate(Model = t[2], Method = t[3], n_presim = t[4], presim_rep = str_sub(t[6], end=1)) %>%
+      mutate(flow_type = "MAF") %>%
+      mutate(generations = if_else(str_detect(x, "116"),116,267)) %>%
+      mutate(Population = if_else(str_detect(x,"gln"), 
+                                  paste(str_sub(t[6], 2), t[7], sep = "_"), str_sub(t[6], 2))) %>%
+      mutate(s_est_10 = s_est,
+             mu_est_10 = mu_est,
+             s_est = 10^s_est,
+             mu_est = 10^mu_est)
+  }
+}
 ```
 
-```{r get barcode dfe data}
-dfe = read_csv(paste0(bar_dir, "2021-09_data_analysis/bc04_v2_a_MutSeq_Result.csv")) %>%
-  bind_cols(bc04_filtered_barcodes) %>%
-  rename(barcode = X1) %>%
-  mutate(population = "bc01") %>%
-  left_join(cnv_barcodes, by= c("barcode" = "barcode", "population"="population")) %>% 
-  mutate(CNV = if_else(is.na(CNV), "noCNV", "CNV"))
 
-## summary ##
-dfe %>%
-  mutate(adaptive = if_else(Mutation_Fitness > 0, "adaptive", "neutral")) %>%
-  group_by(population, CNV, adaptive) %>%
-  summarize(n_lineages = n())
-```
-
-```{r get inferred parameters}
-param_files = list.files(path = paste0(param_dir, "single116/param_estimates/"), pattern = '*est_real_params.csv')
-param_files = paste0(param_dir, "single116/param_estimates/", param_files)
+```{r}
+param_files = list.files(path = param_dir, pattern = '*est_real_params.csv')
+param_files = paste0(param_dir, param_files)
 
 param_list = map(param_files,read_est_params)
 
 param_all = do.call(rbind, param_list)
+
+param_long = param_all %>% 
+  pivot_longer(cols = c(mu_est,s_est), names_to = "parameter",
+               values_to = "value") 
+
+param_files = list.files(path = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc_output/Lauer2018/single116/param_estimates/", pattern = '*est_real_params.csv')
+param_files = paste0("/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc_output/Lauer2018/single116/param_estimates/", param_files)
+
+param_list = map(param_files,read_est_params)
+
+param_116 = do.call(rbind, param_list) %>% mutate(gen = 116)
+
+param_all = param_all %>%
+  mutate(gen = 267) %>%
+  #filter(presim_rep != 1) %>%
+  bind_rows(param_116) 
+```
+
+```{r}
+post_files = list.files(path = posterior_dir, pattern = '*NPE_posterior_samples.csv')
+
+post_list = map(post_files,read_posterior_NPE,d=posterior_dir)
+post_all = do.call(rbind, post_list)
+
+post_files = list.files(path = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc_output/Lauer2018/single116/posteriors/", pattern = '*NPE_posterior_samples.csv')
+
+post_list = map(post_files,read_posterior_NPE,d="/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc_output/Lauer2018/single116/posteriors/")
+post_all = post_all %>%
+  bind_rows(do.call(rbind, post_list))
+```
+
+```{r}
+observations_wide = read_csv("/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc/new/PopPropForABC_all.csv") 
+
+observations = observations_wide %>%
+  bind_cols(read_csv("/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc/generations.csv")) %>%
+  pivot_longer(-Generation,
+               names_to = "Population",
+               values_to = "prop_CNV") %>%
+  mutate(type = "Observation")
 ```
 
 
-```{r get fitness assay data}
-fit_data = read_csv(paste0(fit_dir, "clone_fitness_pergen.csv")) %>%
-  filter(!(str_detect(clone, "DGY1657"))) #remove ancestor
-fit_for_regress = read_csv(paste0(fit_dir,"data_props_Lauer2018.csv"))
+```{r}
+mycolors = c("bc01"="#a6cee3",
+             "bc02"="#1f78b4",
+             "gln_01"="#b2df8a",
+             "gln_02"="#33a02c",
+             "gln_03"="#fb9a99",
+             "gln_04"="#e31a1c",
+             "gln_05"="#fdbf6f",
+             "gln_06"="#ff7f00",
+             "gln_07"="#cab2d6",
+             "gln_08"="#6a3d9a",
+             "gln_09"="#ffed6f")
+param_data = param_all %>% 
+  filter(Method=="NPE") %>%
+  filter(flow_type == "NSF") %>%
+  filter(n_presim == "100000") %>%
+  filter(s_snv == 0.001 & m_snv == 1e-5)
+
+param_data %>%
+  #filter(gen == 116) %>%
+  group_by(Model, Method, flow_type, n_presim, gen) %>%
+  summarize(mean_s = mean(s_est), mean_mu = mean(mu_est),
+            med_s = median(s_est), med_mu = median(mu_est), 
+            min_s = min(s_est), max_s = max(s_est), 
+            min_mu = min(mu_est_10), max_mu = max(mu_est_10))
 ```
 
-
-```{r plot CNV and no CNV lineages}
-a6 = alldata %>%
-  mutate(survival = if_else(generation == "149" & cell_number == 0,"extinct", "survives")) %>%
-  ggplot(aes(as.numeric(generation), cell_number, group=barcode, color=CNV, alpha = survival)) +
-  geom_line() + 
-  scale_y_log10("Number of cells",
-        breaks = scales::trans_breaks("log10", function(x) 10^x),
-        labels = scales::trans_format("log10", scales::math_format(10^.x)),
-        limits = c(1, 1e8)) +
-  theme_minimal(base_size = 15) +
-  scale_color_manual(values = c("CNV" = "#6DB966", "noCNV" = "grey"), name = "", 
-                     labels = c("Lineage with CNV", "Lineage without CNV")) +
-  scale_alpha_manual(values = c("extinct"=0.005, "survives"=0.25), guide = FALSE) +
-  xlab("Generation") +
-  theme(legend.position="top")
-a6
-```
-
-```{r b6}
-b6 = fit_for_regress %>%
-  filter(strain == "DGY1734") %>%
-  ggplot(aes(hours, transformed)) +
-  geom_point() +
-  geom_smooth(method = "lm") +
-  ylab("ln( CNV / ancestor )") +
-  theme_classic(base_size = 16) +
-  xlab("Hours")
-b6
-```
-
-
-```{r plot dfe}
-p_data = param_all %>%
-  filter(Method == "NPE" & flow_type == "NSF" & n_presim == "100000") %>%
-  mutate(Model = case_when(Model == "Chemo"~"Chemo NPE",
-                           Model == "WF"~"WF NPE")) %>%
-  select(Population, presim_rep, s_est, Model) %>%
-  bind_rows(dfe %>%
-            filter(CNV == "CNV" & Mutation_Fitness >0) %>%
-            mutate(Model = "bc01 barcodes", presim_rep = "", s_est = Mutation_Fitness, Population = population) %>%
-              select(Population, presim_rep, s_est, Model)) %>%
-  bind_rows(fit_data %>%
-              filter(fitness_coef > 0) %>%
-              mutate(Model = "Fitness assays", presim_rep = "", 
-                     s_est = fitness_coef, Population = clone) %>%
-              select(Population, presim_rep, s_est, Model)) %>%
-  mutate(Model = fct_relevel(Model, levels = "bc01 barcodes", "Fitness assays",
-                             "Chemo NPE", "WF NPE"))
-
-c6 = p_data %>%
-  ggplot(aes(x = s_est, y = fct_rev(Model), group =Model, fill = Model )) +
-  geom_density_ridges2(stat = "binline", bins=25, scale = 1.15) +
-  #geom_histogram() +
-  scale_y_discrete(expand = c(0, 0)) +
-  scale_x_continuous(expand = c(0, 0), limits = c(0,0.2)) +
-  coord_cartesian(clip = "off") +
-  theme_ridges(center_axis_labels = TRUE) +
-  xlab("Selection coefficient") +
-  ylab("") +
-  #scale_x_log10() +
+```{r a WF inference plot}
+a5 = param_data %>% 
+  filter(Model == "WF") %>%
+  filter(gen == 116) %>%
+  ggplot(aes(mu_est_10, s_est, color = Population, shape=as.factor(presim_rep))) +
+  geom_point(aes(fill=Population),size = 3, alpha = 0.5) +
+  geom_errorbar(aes(ymin = 10^fit_95hdi_low,ymax = 10^fit_95hdi_high)) + 
+  geom_errorbarh(aes(xmin = mut_95hdi_low,xmax = mut_95hdi_high)) +
+  ylab(expression(paste("MAP ", italic("s"[C])))) +
+  xlab(expression(paste("log10(MAP ", italic(delta[C]),")"))) + 
+  xlim(c(-4.8, -3.3)) +
+  ylim(c(0.05, 0.11)) +
+  scale_color_manual(values=mycolors, name = "Population") +
+  scale_fill_manual(values=mycolors, name="Population") + 
+  scale_shape_manual(values = c(21, 22, 23), name = "Inference set") +
   theme(legend.position = "none") +
-  scale_fill_manual(values = c("Fitness assays" = "grey","bc01 barcodes"="#a6cee3", "Chemo NPE" = "#4daf4a", "WF NPE" = "#984ea3"))
-  
-c6
+  ggtitle("WF")
+a5
+```
 
+```{r b Chemo inference plot}
+b5 = param_data %>% 
+  filter(Model == "Chemo") %>%
+  filter(gen == 116) %>%
+  ggplot(aes(mu_est_10, s_est, color = Population, shape=as.factor(presim_rep))) +
+  geom_point(aes(fill=Population), size = 3, alpha = 0.5) +
+  geom_errorbar(aes(ymin = 10^fit_95hdi_low,ymax = 10^fit_95hdi_high)) + 
+  geom_errorbarh(aes(xmin = mut_95hdi_low,xmax = mut_95hdi_high)) +
+  xlim(c(-4.8, -3.3)) +
+  ylim(c(0.05, 0.11)) +
+  ylab(expression(paste("MAP ", italic("s"[C])))) +
+  xlab(expression(paste("log10(MAP ", italic(delta[C]),")"))) + 
+  scale_color_manual(values=mycolors, name = "Population") +
+  scale_fill_manual(values=mycolors, name="Population") + 
+  scale_shape_manual(values = c(21, 22, 23), name = "Inference set") + 
+  theme(legend.position = "none") +
+  ggtitle("Chemo")
+b5
+```
+
+```{r c RMSE plot}
+c5 = param_data %>%
+  filter(gen == 116) %>%
+  ggplot(aes(Model, mean_rmse_ppc, color=Population,fill=Population, shape=as.factor(presim_rep))) +
+  geom_pointrange(aes(ymin = rmse95_low_ppc,ymax = rmse95_hi_ppc), alpha=0.5,
+                  position=position_dodge2(width=0.75)) +
+  ylab("Posterior predictive\naccuracy (RMSE)") +
+  xlab("") +
+  scale_color_manual(values=mycolors, name = "Population") +
+  scale_shape_manual(values = c(21, 22, 23), name = "Inference set") +
+  scale_fill_manual(values=mycolors, name="Population") +
+  theme(legend.position = "none")
+c5
 ```
 
 
+```{r set up for ppc}
+param_chemo = param_data %>% filter(Model == "Chemo")
+param_wf = param_data %>% filter(Model =="WF")
+obs_wide = observations
+```
+
+```{python}
+from cnv_simulation import CNVsimulator_simpleWF, CNVsimulator_simpleChemo
+import numpy as np
+
+def rmse(a, b):
+    return ((a-b)**2).mean()**0.5
+
+N = 3.3e8
+s_snv=0.001
+m_snv=1e-5
+reps=1
+generation=np.genfromtxt("/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sim_inf_old/hpc/generations.csv",delimiter=',', skip_header=1,dtype="int64")
+
+ppc_wf = []
+for i in range(r.param_wf.shape[0]):
+  cnv_params = np.array([r.param_wf['s_est_10'][i],r.param_wf['mu_est_10'][i]])
+  obs_post = CNVsimulator_simpleWF(reps = reps, N=N, s_snv=s_snv, m_snv=m_snv, generation=generation, seed=None, parameters=cnv_params)
+  ppc_wf.append(obs_post)
+ppc_wf=np.vstack(ppc_wf)
+
+ppc_chemo = []
+for i in range(r.param_chemo.shape[0]):
+  cnv_params = np.array([r.param_chemo['s_est_10'][i],r.param_chemo['mu_est_10'][i]])
+  obs_post = CNVsimulator_simpleChemo(reps, s_snv, m_snv, generation, parameters=cnv_params, seed=None)
+  ppc_chemo.append(obs_post)
+ppc_chemo=np.vstack(ppc_chemo)
+```
+
+```{python}
+import pandas as pd
+rmse_wf = []
+for i in range(ppc_wf.shape[0]):
+  rmse_wf_267=rmse(ppc_wf[i,:],r.observations_wide[r.param_wf['Population'][i]].to_numpy())
+  rmse_wf_116=rmse(ppc_wf[i,0:11],r.observations_wide[r.param_wf['Population'][i]].to_numpy()[0:11])
+  rmse_wf.append([rmse_wf_267, rmse_wf_116])
+
+rmse_chemo = []
+for i in range(ppc_chemo.shape[0]):
+  rmse_chemo_267=rmse(ppc_chemo[i,:],r.observations_wide[r.param_chemo['Population'][i]].to_numpy())
+  rmse_chemo_116=rmse(ppc_chemo[i,0:11],r.observations_wide[r.param_chemo['Population'][i]].to_numpy()[0:11])
+  rmse_chemo.append([rmse_chemo_267, rmse_chemo_116])
 
 
+ppc_wf_all = pd.concat([pd.DataFrame(ppc_wf, columns = generation.tolist()), r.param_wf], axis=1)
+ppc_chemo_all = pd.concat([pd.DataFrame(ppc_chemo, columns = generation.tolist()), r.param_chemo], axis=1)
 
+ppc_wf_all = pd.concat([ppc_wf_all, pd.DataFrame(rmse_wf, columns = ['map_rmse_267','map_rmse_116'])], axis=1)
+ppc_chemo_all = pd.concat([ppc_chemo_all, pd.DataFrame(rmse_chemo, columns = ['map_rmse_267','map_rmse_116'])], axis=1)
 
-```{r fig 6}
+```
+
+```{r d PPCs plot}
+d5 = py$ppc_chemo_all %>%
+  as_tibble() %>%
+  bind_rows(py$ppc_wf_all) %>%
+  filter(gen ==  116) %>%
+  filter(presim_rep == 1) %>%
+  pivot_longer(cols = `25`:`267`, names_to = "generation", values_to = "prop_CNV") %>%
+  mutate(type = case_when(Model == "Chemo"~"Chemo PPC", 
+                          Model == "WF" ~"WF PPC")) %>%
+  mutate(Generation = as.numeric(generation)) %>%
+  select(Generation, Population, prop_CNV, type) %>%
+  bind_rows(observations) %>% #%>% filter(Generation <= 116)) %>%
+  #filter(Population %in% c("gln_07")) %>% #"bc01", "bc02","gln_01", "gln_06", "gln_08" #"gln_07"
+  ggplot(aes(Generation, prop_CNV, color = Population)) +
+  geom_line(aes(linetype = type), size=1.5, alpha = 0.7) +
+  facet_wrap(~Population) +
+  scale_linetype_manual(values = c("solid", "dotted", "longdash"),
+                     breaks = c("Observation", "WF PPC","Chemo PPC"), name = "") +
+  scale_color_manual(values=mycolors) +
+  ylab("Proportion of cells with GAP1 CNV") +
+  #geom_point(data=param_data,aes(x=mean_rmse_ppc, y=mean_rmse_ppc, shape=as.factor(presim_rep)),alpha = 0) +
+  guides(shape = guide_legend(override.aes = list(alpha = 1)), linetype=guide_legend(keywidth = 3, keyheight = 1)) +
+  theme(legend.position="left", legend.key.size = unit(2, 'lines'))
+d5
+```
+
+```{r}
 layout <- "
-AC
-BC
+AADDDD
+BBDDDD
+CCDDDD
 "
-fig6 = a6 + b6 + c6 +plot_annotation(tag_levels = 'A') + plot_layout(design = layout)
-ggsave(paste0(fig_path,"Figure6.png"), plot = fig6, width = 13, height = 7, units = "in")
+fig6 = a5 + b5 + c5 + d5 + plot_annotation(tag_levels = 'A') + plot_layout(design = layout)
+fig6
+ggsave(paste0(fig_path,"Figure6.pdf"), plot = fig6, width = 22, height = 12, units = "in")
+ggsave(paste0(fig_path,"Figure6.png"), plot = fig6, width = 22, height = 12, units = "in")
 ```
 
 
-```{r}
-param_data = param_all %>%
-  filter(Method == "NPE" & flow_type == "NSF" & n_presim == "100000")
 
-all_dfe %>%
-  filter(population == "bc01") %>%
-  filter(CNV == "CNV") %>%
-  filter(Mutation_Fitness >0) %>%
-  ggplot(aes(Mutation_Fitness, Establishment_Time)) + 
-  geom_point() +
-  #facet_wrap(~CNV, scales = "free", ncol=1) +
-  #facet_grid(`CNV`~population, scales = "free") +
-  ggtitle("bc01") #+
-  #geom_vline(xintercept = median(( all_dfe %>% filter(population == "bc01") %>% filter(CNV == "CNV") %>% filter(Mutation_Fitness >0))$Mutation_Fitness)) +
-  #geom_vline(xintercept = mean(( all_dfe %>% filter(population == "bc01") %>%filter(CNV == "CNV") %>% filter(Mutation_Fitness >0))$Mutation_Fitness)) +
-  geom_point(data = param_data %>% filter(Population %in% c("bc01")),
-                 aes(mu_est_10, s_est, shape=as.factor(presim_rep)), color = "red") +
-    geom_errorbar(data = param_data %>% filter(Population %in% c("bc01")),
-                  aes(ymin = 10^fit_95hdi_low,ymax = 10^fit_95hdi_high), color = "red") + 
-  geom_errorbarh(data = param_data %>% filter(Population %in% c("bc01")),
-                 aes(xmin = mut_95hdi_low,xmax = mut_95hdi_high), color="red")
-
+```{r sup fig 8}
+sup = py$ppc_chemo_all %>%
+  as_tibble() %>%
+  bind_rows(py$ppc_wf_all) %>%
+  filter(presim_rep == "1") %>%
+  pivot_longer(cols = `25`:`267`, names_to = "generation", values_to = "prop_CNV") %>%
+  mutate(type = case_when(Model == "Chemo" & gen == 116~"Chemo ppc 116", 
+                          Model == "Chemo" & gen == 267~"Chemo ppc 267",
+                          Model == "WF" & gen == 116~"WF ppc 116",
+                          Model == "WF" & gen == 267~"WF ppc 267")) %>%
+  mutate(Generation = as.numeric(generation)) %>%
+  select(Generation, Population, prop_CNV, type, presim_rep) %>%
+  bind_rows(observations) %>%
+  ggplot(aes(Generation, prop_CNV, color = type, fill = presim_rep)) +
+  geom_line(size=1.5, alpha = 0.7) + #aes(linetype = type)
+  facet_wrap(~Population) +
+  scale_color_manual(values = c("black", "lightblue", "darkblue", "green", "darkgreen"),
+                     breaks = c("Observation", "WF ppc 116","WF ppc 267", "Chemo ppc 116","Chemo ppc 267")) +
+  ylab("Proportion of cells with GAP1 CNV") 
+sup
+ggsave(paste0(fig_path,"SupplementaryFigure8.pdf"), plot = sup, width = 25, height = 15, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure8.png"), plot = sup, width = 25, height = 15, units = "in")
 ```
-```{r}
-all_dfe %>%
-  #filter(population == "bc01") %>%
-  #filter(CNV == "CNV") %>%
-  filter(Mutation_Fitness >0) %>%
-  ggplot(aes(Mutation_Fitness)) + 
-  geom_histogram(aes(color = Likelihood_Log_Adaptive)) +
-  facet_grid(CNV~population, scales = "free") 
 
-all_dfe %>%
-  filter(population == "bc02") %>%
-  #filter(CNV == "CNV") %>%
-  #filter(Mutation_Fitness >0) %>%
-  ggplot(aes(Mutation_Fitness)) + 
-  geom_histogram(aes(color = Likelihood_Log_Adaptive))
+
+```{r sup fig 9}
+as_tibble(py$ppc_wf_all) %>%
+  bind_rows(py$ppc_chemo_all) %>%
+  filter(n_presim == "100000") %>%
+  select(Model, Method, Population, gen, map_rmse_267, map_rmse_116) %>%
+  group_by(gen) %>%
+  summarize(mean_map_rmse_267 = mean(map_rmse_267), mean_map_rmse_116 = mean(map_rmse_116)) %>%
+  knitr::kable()
+
+sup = as_tibble(py$ppc_wf_all) %>%
+  bind_rows(py$ppc_chemo_all) %>%
+  filter(n_presim == "100000") %>%
+  select(Model, Method, Population, gen, map_rmse_267, map_rmse_116) %>%
+  mutate(gen_lab = if_else(gen == 116, "Inference using up\nto generation 116","Inference using up\nto generation 267")) %>%
+  pivot_longer(cols = c("map_rmse_267", "map_rmse_116"), names_to = "type", values_to = "value") %>%
+  ggplot(aes(type, value, color = Population)) +
+  scale_color_manual(values=mycolors) +
+  geom_beeswarm(dodge.width = 0.5) +
+  scale_x_discrete(labels = c("PPC up to\ngeneration 116", "PPC up to\ngeneration 267"), name="") +
+  facet_grid(Model~gen_lab) +
+  ylab("MAP RMSE")
+
+sup
+ggsave(paste0(fig_path,"SupplementaryFigure9.pdf"), plot = sup, width = 12, height = 6, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure9.png"), plot = sup, width = 12, height = 6, units = "in")
 ```
-```{r}
-alldata = alldata %>% left_join(all_dfe, by = c("barcode" = "barcode", "population" = "population"))
-alldata %>%
-  mutate(survival = if_else(generation == 149 & cell_number >0, "survives", "extinct")) %>%
-  #filter(CNV.x == "CNV") %>%
-  filter(Mutation_Fitness >0) %>%
-  ggplot(aes(Mutation_Fitness)) +
-  geom_density(aes(color = population)) +
-  facet_wrap(~survival, ncol=1, scales = "free") +
-  geom_density(data = param_data, #%>% filter(Population %in% c("bc02")),
-                 aes(x=s_est))#, color = Population, fill = Population))
+
+```{r sup fig 10}
+a = param_data %>% 
+  filter(Model == "WF") %>%
+  #filter(gen == 267) %>%
+  ggplot(aes(mu_est_10, s_est, color = Population, shape=as.factor(presim_rep))) +
+  geom_point(aes(fill=Population), size = 3, alpha = 0.5) +
+  geom_errorbar(aes(ymin = 10^fit_95hdi_low,ymax = 10^fit_95hdi_high)) + 
+  geom_errorbarh(aes(xmin = mut_95hdi_low,xmax = mut_95hdi_high)) +
+  ylab(expression(paste("MAP ", italic("s"[C])))) +
+  xlab(expression(paste("log10(MAP ", italic(delta[C]),")"))) + 
+  facet_wrap(~gen) +
+  scale_color_manual(values=mycolors, name = "Population") +
+  scale_fill_manual(values=mycolors, name="Population") + 
+  scale_shape_manual(values = c(21, 22, 23), name = "Inference set") + 
+  theme(legend.position = "none") +
+  ggtitle("WF")
+
+b = param_data %>% 
+  filter(Model == "Chemo") %>%
+  #filter(gen == 267) %>%
+  ggplot(aes(mu_est_10, s_est, color = Population, shape=as.factor(presim_rep))) +
+  geom_point(aes(fill=Population), size = 3, alpha = 0.5) +
+  geom_errorbar(aes(ymin = 10^fit_95hdi_low,ymax = 10^fit_95hdi_high)) + 
+  geom_errorbarh(aes(xmin = mut_95hdi_low,xmax = mut_95hdi_high)) +
+  ylab(expression(paste("MAP ", italic("s"[C])))) +
+  xlab(expression(paste("log10(MAP ", italic(delta[C]),")"))) + 
+  facet_wrap(~gen) + 
+  scale_color_manual(values=mycolors, name = "Population") +
+  scale_fill_manual(values=mycolors, name="Population") + 
+  scale_shape_manual(values = c(21, 22, 23), name = "Training set") + 
+  #theme(legend.position = "none") +
+  ggtitle("Chemo")
+
+sup = a / b + plot_annotation(tag_levels = 'A') 
+sup
+ggsave(paste0(fig_path,"SupplementaryFigure10.pdf"), plot = sup, width = 12, height = 12, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure10.png"), plot = sup, width = 12, height = 12, units = "in")
+```
+
+
+```{r sup fig 11}
+data = param_116 %>%
+  filter(Model == "WF") %>%
+  filter(Method=="NPE") %>%
+  filter(flow_type == "NSF") %>%
+  filter(n_presim == "100000" & presim_rep == "1") %>%
+  unite(other_params, c("s_snv", "m_snv"), remove = F) %>%
+  filter(other_params !=  "0.1_0") %>%
+  filter(other_params !=  "0.01_0")
+
+
+labels=c("0.001_1e-05"  = expression(atop(paste(italic("s"[B])," = 0.001,"), paste(italic(delta[B]), "  = 1e-5"))),
+         "0_0" = expression(atop(paste(italic("s"[B])," = 0,"), paste(italic(delta[B]), "  = 0"))), 
+         "0.01_1e-05"  = expression(atop(paste(italic("s"[B])," = 0.01,"), paste(italic(delta[B]), "  = 1e-5"))),
+         "0.1_1e-07"  = expression(atop(paste(italic("s"[B])," = 0.1,"), paste(italic(delta[B]), "  = 1e-7"))),
+         "0.1_1e-05"  = expression(atop(paste(italic("s"[B])," = 0.1,"), paste(italic(delta[B]), "  = 1e-5"))))
+
+
+
+sup = data %>%
+  ggplot(aes(mu_est_10, s_est, color = other_params)) +
+  geom_point(aes(fill=other_params),size = 3, alpha = 0.5) +
+  geom_errorbar(aes(ymin = 10^fit_95hdi_low,ymax = 10^fit_95hdi_high)) + 
+  geom_errorbarh(aes(xmin = mut_95hdi_low,xmax = mut_95hdi_high)) +
+  ylab(expression(paste("MAP ", italic("s"[C])))) +
+  xlab(expression(paste("log10(MAP ", italic(delta[C]),")"))) + 
+  facet_wrap(~Population) +
+  scale_color_discrete(labels = labels,  name = "Other beneficial mutations") +
+  scale_fill_discrete(guide = "none") +
+  theme(legend.position = 'top')
+sup
+ggsave(paste0(fig_path,"SupplementaryFigure11.pdf"), plot = sup, width = 13, height = 12, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure11.png"), plot = sup, width = 13, height = 12, units = "in")
+```
+
+```{r sup fig 12}
+a = data %>%
+  ggplot(aes(Population, mean_rmse_ppc, color=other_params)) +
+  geom_pointrange(aes(ymin = rmse95_low_ppc,ymax = rmse95_hi_ppc), alpha=0.5,
+                  position=position_dodge2(width=0.5)) +
+  ylab("Posterior predictive check\nroot mean square error") +
+  xlab("") +
+  scale_color_discrete(labels = labels,  name = "Other beneficial mutations") 
+
+b = data %>%
+  ggplot(aes(Population, mean_corr_ppc, color=other_params)) +
+  geom_pointrange(aes(ymin = rmse95_low_ppc,ymax = rmse95_hi_ppc), alpha=0.5,
+                  position=position_dodge2(width=0.5)) +
+  ylab("Posterior predictive check\ncorrelation") +
+  scale_color_discrete(labels = labels,  name = "Other beneficial mutations") +
+  xlab("") +
+  theme(legend.position = "none") 
+
+sup = a / b + plot_annotation(tag_levels = 'A') 
+sup
+ggsave(paste0(fig_path,"SupplementaryFigure12.pdf"), plot = sup, width = 15, height = 10, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure12.png"), plot = sup, width = 15, height = 10, units = "in")
 ```
 

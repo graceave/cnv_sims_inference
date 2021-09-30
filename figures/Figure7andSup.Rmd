@@ -1,0 +1,239 @@
+---
+title: "Figure 7 and associated supplementary figures"
+output: html_notebook
+author: Grace Avecilla
+---
+
+```{r set up}
+library(tidyverse)
+library(patchwork)
+library(groupdata2)
+library(ggridges)
+theme_set(theme_classic(base_size = 21))
+bar_dir = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/barcode_method/"
+param_dir = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/hpc_output/Lauer2018/"
+fit_dir = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference/fitness_assays/"
+fig_path = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/figures/"
+```
+
+```{r cnv barcodes}
+cnv_barcodes = read_csv(paste0(bar_dir,"CNV_barcodes.csv")) %>%
+  mutate(CNV = "CNV")
+```
+
+```{r inferred params function}
+read_est_params = function(x) {
+  if(str_detect(x, "NPE")==TRUE){
+    file = read_csv(x, col_names = c("Model","Method","col_to_sep","col_to_sep2",
+                                     "mu_est","s_snv","m_snv","rmse_map",
+                                     "mean_rmse_ppc","rmse95_low_ppc","rmse95_hi_ppc",
+                                     "corr_map",
+                                     "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
+                                     "fit_95hdi_low","fit_95hdi_high",
+                                     "mut_95hdi_low","mut_95hdi_high",
+                                     "aic", "dic", "waic1", "waic2")) %>%
+      separate(col_to_sep, into = c(NA,NA,NA,"n_presim", "presim_rep"), 
+               sep="([_.])") %>%
+      separate(col_to_sep2, into = c("Population", "s_est"), 
+               sep="([-])") %>%
+      mutate(s_est_10 = as.numeric(s_est)*-1,
+             mu_est_10 = mu_est,
+             s_est = 10^(as.numeric(s_est)*-1),
+             mu_est = 10^mu_est) %>%
+      mutate(flow_type = if_else(str_detect(x, "nsf"), "NSF", "MAF"))
+  }
+  if(str_detect(x, "ABC")==TRUE) {
+    file = read_csv(x, col_names = c("Model","Method","n_presim","col_to_sep",
+                                    "mu_est","s_snv","m_snv","rmse_map",
+                                     "mean_rmse_ppc","rmse95_low_ppc","rmse95_hi_ppc",
+                                     "corr_map",
+                                     "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
+                                     "fit_95hdi_low","fit_95hdi_high",
+                                     "mut_95hdi_low","mut_95hdi_high",
+                                     "aic", "dic", "waic1", "waic2")) %>%
+      separate(col_to_sep, into = c("Population", "s_est"), 
+               sep="([-])") %>%
+      mutate(presim_rep = case_when(str_detect(x, "_1_") ~ "1",
+                                    str_detect(x, "_2_") ~ "2",
+                                    str_detect(x, "_3_") ~ "3")) %>%
+      mutate(s_est_10 = as.numeric(s_est)*-1,
+             mu_est_10 = mu_est, 
+             s_est = 10^(as.numeric(s_est)*-1),
+             mu_est = 10^mu_est) %>%
+      select("Model","Method","n_presim", "presim_rep","Population",
+             "s_est","mu_est","s_snv","m_snv","rmse_map",
+             "mean_rmse_ppc","rmse95_low_ppc","rmse95_hi_ppc",
+             "corr_map",
+             "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
+             "fit_95hdi_low","fit_95hdi_high",
+             "mut_95hdi_low","mut_95hdi_high",
+             "aic", "dic", "waic1", "waic2", "s_est_10", "mu_est_10") %>%
+      mutate(flow_type = NA) %>%
+      mutate(n_presim = if_else(n_presim == 100, "10000", "100000"))
+  }
+  return(file)
+}
+```
+
+
+```{r get lineage tracking data}
+bc04 = read_csv(paste0(bar_dir,'2021-09_data_analysis/data_bc04/bc04_cluster.csv'), 
+                col_names = c("barcode", "g5","g37","g62","g99","g124","g149")) 
+bc04_filtered_barcodes = read_csv(paste0(bar_dir,'./2021-09_data_analysis/data_bc04/bc04_bcfiltered_barcodes.csv'),
+                                  col_names = F)
+
+bc_04_filtered = bc04 %>% 
+  #select only lineages that made it through the filter for dfe
+  filter(barcode %in% bc04_filtered_barcodes$X1) %>%
+  mutate(population = "bc01")
+
+bc_04_freq = bc_04_filtered %>%
+  #convert from reads to relative frequency
+  mutate(g5 = g5/sum(g5),
+         g37 = g37/sum(g37),
+         g62 = g62/sum(g62),
+         g99 = g99/sum(g99),
+         g124 = g124/sum(g124),
+         g149 = g149/sum(g149)) %>%
+  pivot_longer(cols=starts_with("g"), names_to = "generation", values_to = "relative_freq") %>%
+  mutate(generation = str_remove(generation, "g")) %>%
+  mutate(cell_number = relative_freq*3e8)
+
+#filter out ugly lineages for plotting
+alldata = bc_04_filtered %>%
+  left_join(cnv_barcodes, by= c("barcode" = "barcode", "population"="population")) %>% 
+  filter(g5 > 0) %>%
+  filter(!(g37 == 0 & g62 >0)) %>%
+  filter(!(g62 == 0 & g99 >0)) %>%
+  filter(!(g99 == 0 & g124 >0)) %>%
+  filter(!(g124 == 0 & g149 >0)) %>%
+  mutate(CNV = if_else(is.na(CNV), "noCNV", "CNV")) %>%
+  mutate(g5 = g5/sum(g5),
+         g37 = g37/sum(g37),
+         g62 = g62/sum(g62),
+         g99 = g99/sum(g99),
+         g124 = g124/sum(g124),
+         g149 = g149/sum(g149)) %>%
+  pivot_longer(cols=starts_with("g"), names_to = "generation", values_to = "relative_freq") %>%
+  mutate(generation = str_remove(generation, "g")) %>%
+  mutate(cell_number = relative_freq*3e8)
+```
+
+```{r get barcode dfe data}
+dfe = read_csv(paste0(bar_dir, "2021-09_data_analysis/bc04_v2_a_MutSeq_Result.csv")) %>%
+  bind_cols(bc04_filtered_barcodes) %>%
+  rename(barcode = X1) %>%
+  mutate(population = "bc01") %>%
+  left_join(cnv_barcodes, by= c("barcode" = "barcode", "population"="population")) %>% 
+  mutate(CNV = if_else(is.na(CNV), "noCNV", "CNV"))
+
+## summary ##
+dfe %>%
+  mutate(adaptive = if_else(Mutation_Fitness > 0, "adaptive", "neutral")) %>%
+  group_by(population, CNV, adaptive) %>%
+  summarize(n_lineages = n())
+```
+
+```{r get inferred parameters}
+param_files = list.files(path = paste0(param_dir, "single116/param_estimates/"), pattern = '*est_real_params.csv')
+param_files = paste0(param_dir, "single116/param_estimates/", param_files)
+
+param_list = map(param_files,read_est_params)
+
+param_all = do.call(rbind, param_list)
+```
+
+
+```{r get fitness assay data}
+fit_data = read_csv(paste0(fit_dir, "clone_fitness_pergen.csv")) %>%
+  filter(!(str_detect(clone, "DGY1657"))) #remove ancestor
+fit_for_regress = read_csv(paste0(fit_dir,"data_props_Lauer2018.csv"))
+```
+
+
+```{r plot CNV and no CNV lineages}
+a = alldata %>%
+  mutate(survival = if_else(generation == "149" & cell_number == 0,"extinct", "survives")) %>%
+  ggplot(aes(as.numeric(generation), cell_number, group=barcode, color=CNV, alpha = survival)) +
+  geom_line() + 
+  scale_y_log10("Number of cells",
+        breaks = scales::trans_breaks("log10", function(x) 10^x),
+        labels = scales::trans_format("log10", scales::math_format(10^.x)),
+        limits = c(1, 1e8)) +
+  theme_minimal(base_size = 15) +
+  scale_color_manual(values = c("CNV" = "#6DB966", "noCNV" = "grey"), name = "", 
+                     labels = c("Lineage with CNV", "Lineage without CNV")) +
+  scale_alpha_manual(values = c("extinct"=0.005, "survives"=0.25), guide = FALSE) +
+  xlab("Generation") +
+  theme(legend.position="top")
+a
+```
+
+```{r b}
+b = fit_for_regress %>%
+  filter(strain == "DGY1734") %>%
+  ggplot(aes(hours, transformed)) +
+  geom_smooth(method = "lm") +
+  ylab("log( CNV / ancestor )") +
+  theme_classic(base_size = 16) +
+  geom_point(aes(shape = run)) +
+  scale_shape_discrete(labels = c("Replicate 1", "Replicate 2"), name= "") +
+  theme(strip.text.x = element_blank(),
+      strip.background = element_rect(colour="white", fill="white"),
+      legend.position=c(.3,.75)
+      ) +
+  xlab("Hours")
+b
+```
+
+
+```{r plot dfe}
+p_data = param_all %>%
+  filter(Method == "NPE" & flow_type == "NSF" & n_presim == "100000") %>%
+  mutate(Model = case_when(Model == "Chemo"~"Chemo NPE",
+                           Model == "WF"~"WF NPE")) %>%
+  select(Population, presim_rep, s_est, Model) %>%
+  bind_rows(dfe %>%
+            filter(CNV == "CNV" & Mutation_Fitness >0) %>%
+            mutate(Model = "Lineage tracking", presim_rep = "", s_est = Mutation_Fitness, Population = population) %>%
+              select(Population, presim_rep, s_est, Model)) %>%
+  bind_rows(fit_data %>%
+              filter(fitness_coef > 0) %>%
+              mutate(Model = "Competition assays", presim_rep = "", 
+                     s_est = fitness_coef, Population = clone) %>%
+              select(Population, presim_rep, s_est, Model)) %>%
+  mutate(Model = fct_relevel(Model, levels = "Lineage tracking", "Fitness assays",
+                             "Chemo NPE", "WF NPE"))
+
+c = p_data %>%
+  ggplot(aes(x = s_est, y = fct_rev(Model), group =Model, fill = Model )) +
+  geom_density_ridges2(stat = "binline", bins=25, scale = 1) +
+  #geom_histogram() +
+  scale_y_discrete(expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0, 0), limits = c(0,0.2)) +
+  coord_cartesian(clip = "off") +
+  theme_ridges(center_axis_labels = TRUE) +
+  xlab(expression(paste("Selection coefficient, ", italic("s"[C])))) +
+  ylab("") +
+  #scale_x_log10() +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c("Competition assays" = "grey","Lineage tracking"="#a6cee3", "Chemo NPE" = "#4daf4a", "WF NPE" = "#984ea3"))
+  
+c
+
+```
+
+
+
+
+
+
+```{r fig 7}
+layout <- "
+AC
+BC
+"
+fig7 = a + b + c +plot_annotation(tag_levels = 'A') + plot_layout(design = layout)
+ggsave(paste0(fig_path,"Figure7.pdf"), plot = fig7, width = 13, height = 7, units = "in")
+ggsave(paste0(fig_path,"Figure7.png"), plot = fig7, width = 13, height = 7, units = "in")
+```

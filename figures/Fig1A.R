@@ -3,7 +3,7 @@
 
 
 library(tidyverse)
-setwd("/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sims_inference")
+setwd("/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sim_inf_old")
 
 pops = read_csv('./hpc/new/PopPropForABC_all.csv') 
 gens = read_csv('./hpc/generations.csv')
@@ -11,10 +11,22 @@ gens = read_csv('./hpc/generations.csv')
 data = cbind(pops, gens) %>% 
   pivot_longer(-Generation, names_to="Population", values_to="PropCNV")
 
+mycolors = c("bc01"="#a6cee3",
+             "bc02"="#1f78b4",
+             "gln_01"="#b2df8a",
+             "gln_02"="#33a02c",
+             "gln_03"="#fb9a99",
+             "gln_04"="#e31a1c",
+             "gln_05"="#fdbf6f",
+             "gln_06"="#ff7f00",
+             "gln_07"="#cab2d6",
+             "gln_08"="#6a3d9a",
+             "gln_09"="#ffed6f")
+
 p = ggplot(data, 
        aes(Generation, PropCNV, color=Population)) +
   geom_line(size=1.5) + 
-  scale_color_brewer(palette="Paired") +
+  scale_color_manual(values=mycolors) +
   theme_classic(base_size=20) +
   scale_x_continuous(expand = c(0, 0), breaks = c(50, 100, 150, 200, 250)) + 
   scale_y_continuous("Proportion of cells with GAP1 CNV", expand = c(0, 0))
