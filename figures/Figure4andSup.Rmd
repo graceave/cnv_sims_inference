@@ -271,7 +271,7 @@ ggsave(paste0(fig_path,"Figure4.png"), plot = fig4, width = 18, height = 6, unit
 ```
 *Figure 4* These show the results of inference on five simulated synthetic observations generated using either the Wright-Fisher (WF) or chemostat (Chemo) model per combination of fitness effect s and mutation rate 𝛿C. We performed inference on each synthetic observation using either the Wright-Fisher (WF) or chemostat (Chemo) model. For NPE, each training set corresponds to an independent amortized posterior trained with 100,000 simulations, with which each synthetic observation was evaluated. Boxplots and points show the ratio of MAP estimate to true parameters as compared to true parameters, log transformed, for s and  δC.
 
-```{r sup fig 5}
+```{r sup fig 8}
 s_a = hdr_data_long %>%
   group_by(obs_model,mod_method, sim_params, HDR) %>%
   summarize(mean_in_hdr_prop = mean(in_hdr_prop)) %>%#*100) %>%
@@ -333,9 +333,9 @@ s_b = hdr_data_long %>%
 
 supp = s_a / s_b
 supp
-ggsave(paste0(fig_path,"SupplementaryFig5.pdf"), plot = supp, width = 18, height = 15, units = "in")
-ggsave(paste0(fig_path,"SupplementaryFig5.png"), plot = supp, width = 18, height = 15, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFig8.pdf"), plot = supp, width = 18, height = 15, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFig8.png"), plot = supp, width = 18, height = 15, units = "in")
 
 ```
-*Supplemental Figure 5* These show the results of inference on five simulated synthetic observations generated using either the Wright-Fisher (WF) or chemostat (Chemo) model per combination of fitness effect s and mutation rate 𝛿C. We performed inference on each synthetic observation using both models. For NPE, each training set corresponds to an independent amortized posterior trained with 100,000 simulations, with which each synthetic observation was evaluated. A) Percentage of true parameters within the 50% HDR. The bar height shows the average of three training sets. B) Percentage of true parameters within the 95% HDR. The bar height shows the average of three training sets.
+*Supplemental Figure 8* These show the results of inference on five simulated synthetic observations generated using either the Wright-Fisher (WF) or chemostat (Chemo) model per combination of fitness effect s and mutation rate 𝛿C. We performed inference on each synthetic observation using both models. For NPE, each training set corresponds to an independent amortized posterior trained with 100,000 simulations, with which each synthetic observation was evaluated. A) Percentage of true parameters within the 50% HDR. The bar height shows the average of three training sets. B) Percentage of true parameters within the 95% HDR. The bar height shows the average of three training sets.
 

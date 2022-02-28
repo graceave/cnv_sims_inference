@@ -1,0 +1,478 @@
+---
+title: "Figure 3 and associated supplementary figures"
+output: html_notebook
+author: Grace Avecilla
+---
+
+```{r libs and functions}
+library(tidyverse)
+library(patchwork)
+library(scales)
+library(ggbeeswarm)
+theme_set(theme_classic(base_size = 20))
+
+read_est_params = function(x) {
+  if(str_detect(x, "NPE")==TRUE){
+    file = read_csv(x, col_names = c("Model","Method","col_to_sep",
+                                     "s_est","mu_real",
+                                     "mu_est","s_snv","m_snv","rmse_map",
+                                     "mean_rmse_ppc","rmse95_low_ppc","rmse95_hi_ppc",
+                                     "corr_map",
+                                     "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
+                                     "fit_95hdi_low","fit_95hdi_high",
+                                     "mut_95hdi_low","mut_95hdi_high",
+                                     "aic", "dic", "waic1", "waic2")) %>%
+      mutate(n_sim=NA) %>%
+      separate(col_to_sep, into = c(NA,NA,NA,"n_presim", "presim_rep","s_real"), 
+               sep="([_.])") %>%
+      mutate(s_real = str_remove(s_real, "csv")) %>%
+      mutate(s_est_10 = s_est, s_real_10 = as.numeric(s_real),
+             mu_est_10 = mu_est, mu_real_10 = mu_real,
+             s_est = 10^s_est, s_real = 10^as.numeric(s_real),
+             mu_est = 10^mu_est, mu_real = 10^mu_real) %>%
+      mutate(mu_ratio = mu_est/mu_real, s_ratio = s_est/s_real,
+             mu_diff = mu_est - mu_real, s_diff = s_est - s_real) %>%
+      mutate(flow_type = if_else(str_detect(x, "nsf"), "NSF", "MAF")) 
+  }
+  if(str_detect(x, "rejectionABC")==TRUE){
+    file = read_csv(x, col_names = c("Model","Method","col_to_sep",
+                                     "s_est","mu_real",
+                                     "mu_est","s_snv","m_snv","rmse_map",
+                                     "mean_rmse_ppc","rmse95_low_ppc","rmse95_hi_ppc",
+                                     "corr_map",
+                                     "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
+                                     "fit_95hdi_low","fit_95hdi_high",
+                                     "mut_95hdi_low","mut_95hdi_high",
+                                     "aic", "dic", "waic1", "waic2")) %>%
+      mutate(n_sim=NA) %>%
+      separate(col_to_sep, into = c(NA,NA,NA,"n_presim", "presim_rep","s_real"), 
+               sep="([_.])") %>%
+      mutate(s_real = str_remove(s_real, "csv")) %>%
+      mutate(s_est_10 = s_est, s_real_10 = as.numeric(s_real),
+             mu_est_10 = mu_est, mu_real_10 = mu_real,
+             s_est = 10^s_est, s_real = 10^as.numeric(s_real),
+             mu_est = 10^mu_est, mu_real = 10^mu_real) %>%
+      mutate(mu_ratio = mu_est/mu_real, s_ratio = s_est/s_real,
+             mu_diff = mu_est - mu_real, s_diff = s_est - s_real) %>%
+      mutate(flow_type = NA) 
+  }
+  if(str_detect(x, "pyABC")==TRUE) {
+    file = read_csv(x, col_names = c("Model","Method","col_to_sep",
+                                     "s_est","mu_real",
+                                     "mu_est","s_snv","m_snv","rmse_map",
+                                     "mean_rmse_ppc","rmse95_low_ppc","rmse95_hi_ppc",
+                                     "corr_map",
+                                     "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
+                                     "fit_95hdi_low","fit_95hdi_high",
+                                     "mut_95hdi_low","mut_95hdi_high",
+                                     "aic", "dic", "waic1", "waic2", "n_sim")) %>%
+      separate(col_to_sep, into = c("n_presim","s_real"), 
+               sep="([-])") %>%
+      mutate(s_real = as.numeric(s_real)*-1) %>%
+      mutate(presim_rep = case_when(str_detect(x, "_1_") ~ "1",
+                                    str_detect(x, "_2_") ~ "2",
+                                    str_detect(x, "_3_") ~ "3")) %>%
+      mutate(n_sim = if("n_sim" %in% colnames(.)) n_sim else NA) %>%
+      select("Model","Method","n_presim", "presim_rep","s_real",
+             "s_est","mu_real",
+             "mu_est","s_snv","m_snv","rmse_map",
+             "mean_rmse_ppc","rmse95_low_ppc","rmse95_hi_ppc",
+             "corr_map",
+             "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
+             "fit_95hdi_low","fit_95hdi_high",
+             "mut_95hdi_low","mut_95hdi_high",
+             "aic", "dic", "waic1", "waic2", "n_sim") %>%
+      mutate(s_est_10 = s_est, s_real_10 = as.numeric(s_real),
+             mu_est_10 = mu_est, mu_real_10 = mu_real,
+             s_est = 10^s_est, s_real = 10^as.numeric(s_real),
+             mu_est = 10^mu_est, mu_real = 10^mu_real) %>%
+      mutate(mu_ratio = mu_est/mu_real, s_ratio = s_est/s_real,
+             mu_diff = mu_est - mu_real, s_diff = s_est - s_real) %>%
+      mutate(flow_type = NA) %>%
+      mutate(n_presim = if_else(n_presim == "100", "10000", "100000"))
+  }
+  return(file)
+}
+```
+
+
+```{r get data}
+file_dir = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/scripts/cnv_sim_inf_old/hpc_output/test_performance/single/param_estimates/"
+files = list.files(path = file_dir, pattern = '*est_real_params.csv')
+files = paste0(file_dir, files)
+data_list = map(files,read_est_params)
+data_all = do.call(rbind, data_list) %>%
+  mutate(Method = str_replace(Method, "SNPE", "NPE")) %>%
+  mutate(relative_error_mut = (mu_real - mu_est)/mu_real, relative_error_s = (s_real - s_est)/s_real)
+# percent in HDR, counted manually
+fig_path = "/Volumes/GoogleDrive/.shortcut-targets-by-id/19NQRq-XLPpjqJGmLbP4MHRjala2WVahk/Avecilla et al Simulating CNV evolution/figures/"
+hdr_data = read_csv(paste0(file_dir, "HDR.csv"))
+```
+
+```{r}
+color_vec = c("#4daf4a", "#984ea3","#e41a1c", "#377eb8", "black")
+mod_meth = c("Chemo NPE NSF", "WF NPE NSF", "Chemo rejection ABC ", "WF rejection ABC ", "Pseudo-observation")
+```
+
+
+```{r comparison rejection ABC WF}
+data_all = data_all %>% mutate(Method = if_else(Method == "rejectionABC", "rejection ABC", Method))
+data_s = data_all %>% filter(Method == "rejection ABC" & Model == "WF" & n_presim=="100000") %>% # & n_presim=="100000"
+  bind_rows(data_all %>% filter(n_presim == "100000" & flow_type == "NSF" & Model == "WF")) %>% #n_presim == "100000" & 
+  mutate(flow_type = if_else(!is.na(flow_type),flow_type, "")) %>%
+  unite(mod_method, Model, Method, flow_type, sep = " ", remove=F) %>%
+  unite(sim_params,s_real, mu_real, remove = F) #%>%
+  #filter(!(sim_params %in% c("0.001_1e-05", "0.001_1e-07", "0.1_1e-05", "0.1_1e-07")))
+
+hdr_data_long = hdr_data %>%
+  filter(method == "rejection ABC" & obs_model == "WF" & n_presim==100000) %>% #& n_presim==100000
+  bind_rows(hdr_data %>% filter(n_presim == 100000 &flow_type == "NSF" & obs_model == "WF")) %>% #n_presim == 100000 & 
+  mutate(flow_type = if_else(!is.na(flow_type),flow_type, "")) %>%
+  unite(mod_method, obs_model, method, flow_type, sep = " ", remove=F) %>%
+  pivot_longer(cols = starts_with("0."), names_to = "sim_params", values_to = "in_hdr")  #%>%
+  #filter(!(sim_params %in% c("0.001_1e-5", "0.001_1e-7", "0.1_1e-5", "0.1_1e-7")))
+
+a_supp = hdr_data_long %>% mutate(in_hdr_prop = in_hdr/5) %>%
+  group_by(mod_method, sim_params, HDR) %>%
+  summarize(mean_in_hdr_prop = mean(in_hdr_prop)) %>%#*100) %>%
+  ggplot(aes(sim_params, mean_in_hdr_prop,fill=mod_method)) +#, shape = as.factor(rep))) +
+  #geom_boxplot() +
+  geom_bar(stat="identity", position="dodge") +
+  geom_point(data=hdr_data_long %>% mutate(in_hdr_prop = in_hdr/5), 
+             aes(sim_params, in_hdr_prop,fill=mod_method,shape = as.factor(rep)),
+             color="black",
+             position = position_jitterdodge(dodge.width = 1),
+             size=3) +
+  scale_fill_manual(values=color_vec,name="", breaks=mod_meth) +
+  scale_shape_manual(values = c(21, 22, 23), name = "Training set") +
+  xlab("") +
+  ylab("Percent of true parameters\nin HDR") +
+  scale_y_continuous(labels = scales::percent) +#, limits = c(0,100)) +
+  ggtitle("A") +
+  facet_wrap(~HDR, ncol = 1) +
+  #ylim(c(0,100)) +
+ scale_x_discrete(labels=c("0.01_1e-7"  =expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.01_1e-5"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.01_1e-3"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.01_1e-9"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.1_1e-3"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.1_1e-9"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.001_1e-3"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.001_1e-9"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-9"))),
+                           "0.001_1e-5"  =expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.001_1e-7"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.1_1e-5"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.1_1e-7"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7")))))
+
+
+b_supp = data_s %>% mutate(fit_hdi_width= 10^fit_95hdi_high - 10^fit_95hdi_low) %>%
+  ggplot(aes(sim_params, fit_hdi_width, color = mod_method)) + #, shape = as.factor(presim_rep))) +
+  #geom_point(position = position_jitterdodge()) +
+  geom_boxplot() +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  ylab("s 95% HDI width") +
+  xlab("") +
+  #theme(legend.position = "none") +
+scale_x_discrete(labels=c("0.01_1e-07"  =expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.01_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.01_0.001"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.01_1e-09"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.1_0.001"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.1_1e-09"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.001_0.001"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.001_1e-09"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-9"))),
+                          "0.001_1e-05"  =expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.001_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7"))))) +
+  ggtitle("B")
+
+c_supp = data_s %>%
+  mutate(mut_hdi_width= mut_95hdi_high - mut_95hdi_low) %>%
+  ggplot(aes(sim_params, mut_hdi_width, color = mod_method)) +#, shape = as.factor(presim_rep))) +
+  #geom_point(position = position_jitterdodge()) +
+  geom_boxplot() +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  scale_y_log10() +
+  ylab(expression(paste(delta," 95% HDI width, log10"))) +
+  xlab("") +
+  scale_x_discrete(labels=c("0.01_1e-07"  =expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.01_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.01_0.001"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.01_1e-09"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.1_0.001"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.1_1e-09"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.001_0.001"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.001_1e-09"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-9"))),
+                          "0.001_1e-05"  =expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.001_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7"))))) +
+  ggtitle("C")
+
+data_s$sim_params = factor(data_s$sim_params, 
+                           levels = c("0.01_1e-07", "0.01_1e-05",  "0.01_0.001",  "0.01_1e-09",
+                                      "0.1_0.001",   "0.1_1e-09",   "0.001_0.001", "0.001_1e-09",
+                                      "0.001_1e-05", "0.001_1e-07", "0.1_1e-05", "0.1_1e-07"),
+                         ordered = TRUE, labels=c("0.01_1e-07" = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.01_1e-05"=expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.01_0.001"=expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.01_1e-09"=expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.1_0.001"=expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.1_1e-09"=expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.001_0.001"=expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.001_1e-09"=expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.001_1e-05"=expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.001_1e-07"=expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7")))
+                                                  ))
+
+
+
+data_d = data_s %>%
+  pivot_longer(cols = c("mu_ratio", "s_ratio"), 
+               names_to = "error_type", values_to = "log10 ( MAP parameter / true parameter )") %>%
+  mutate(`log10 ( MAP parameter / true parameter )` = log10(`log10 ( MAP parameter / true parameter )`))
+
+d_supp = data_d %>% 
+  filter(n_presim == "100000") %>%
+  ggplot(aes(error_type,`log10 ( MAP parameter / true parameter )`, color=mod_method)) +
+  geom_boxplot() +
+  geom_point(aes(shape=presim_rep),position = position_jitterdodge()) +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  xlab("") +
+  facet_wrap(~sim_params, labeller=label_parsed, scales = "free", ncol=4) +
+  scale_x_discrete(labels=c("s_ratio"  = expression(italic("s"[C])),
+                            "mu_ratio" = expression(italic(delta[C]))))+
+  xlab("Relative error type") +
+  theme(panel.spacing.x=unit(1, "lines")) +
+  ggtitle("D")
+
+
+e_supp = data_s %>%
+  ggplot(aes(mod_method,mean_rmse_ppc, color=mod_method)) +
+  #geom_point(position=position_jitter()) +
+  geom_pointrange(aes(ymin = rmse95_low_ppc,ymax = rmse95_hi_ppc), alpha=0.5,
+                  position=position_jitter()) +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  #theme(legend.position = "none") +
+  facet_wrap(~sim_params, labeller=label_parsed, ncol=4,strip.position="bottom") +
+  xlab("") +
+  ylab("Posterior predictive check \nroot mean square error") +
+  theme(axis.text.x=element_blank()) +
+  ggtitle("E")
+
+f_supp = data_s %>%
+  #  ggplot(aes(sim_params,rmse_map, color=mod_method)) +
+  ggplot(aes(mod_method,rmse_map, color=mod_method)) +
+  facet_wrap(~sim_params, labeller=label_parsed, ncol=4,strip.position="bottom") +
+  geom_boxplot() +
+  geom_point(position = position_jitterdodge()) +
+  theme(axis.text.x=element_blank()) +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  xlab("") +
+  ylab("MAP posterior prediction \nroot mean square error") +
+  ggtitle("F")
+
+layout <- "
+AAABBB
+AAACCC
+DDDDDD
+DDDDDD
+EEEFFF
+"
+supp = a_supp + b_supp + c_supp + d_supp + e_supp + f_supp +
+  plot_layout(design = layout)
+supp
+#ggsave(paste0(fig_path,"SupplementaryFig5.pdf"), plot = supp, width = 30, height = 25, units = "in")
+ggsave(paste0(fig_path,"RejectionABC.png"), plot = supp, width = 40, height = 30, units = "in")
+```
+
+```{r comparison rejection ABC Chemo}
+data_s = data_all %>% filter(Method == "rejection ABC" & Model == "Chemo" & n_presim=="100000") %>% # & n_presim=="100000"
+  bind_rows(data_all %>% filter(n_presim == "100000" & flow_type == "NSF" & Model == "Chemo")) %>% #n_presim == "100000" & 
+  mutate(flow_type = if_else(!is.na(flow_type),flow_type, "")) %>%
+  unite(mod_method, Model, Method, flow_type, sep = " ", remove=F) %>%
+  unite(sim_params,s_real, mu_real, remove = F) #%>%
+  #filter(!(sim_params %in% c("0.001_1e-05", "0.001_1e-07", "0.1_1e-05", "0.1_1e-07")))
+
+hdr_data_long = hdr_data %>%
+  filter(method == "rejection ABC" & obs_model == "Chemo" & n_presim==100000) %>% #& n_presim==100000
+  bind_rows(hdr_data %>% filter(n_presim == 100000 &flow_type == "NSF" & obs_model == "Chemo")) %>% #n_presim == 100000 & 
+  mutate(flow_type = if_else(!is.na(flow_type),flow_type, "")) %>%
+  unite(mod_method, obs_model, method, flow_type, sep = " ", remove=F) %>%
+  pivot_longer(cols = starts_with("0."), names_to = "sim_params", values_to = "in_hdr") %>%
+  filter(!is.na(in_hdr))#%>%
+  #filter(!(sim_params %in% c("0.001_1e-5", "0.001_1e-7", "0.1_1e-5", "0.1_1e-7")))
+
+a_supp = hdr_data_long %>% mutate(in_hdr_prop = in_hdr/5) %>%
+  group_by(mod_method, sim_params, HDR) %>%
+  summarize(mean_in_hdr_prop = mean(in_hdr_prop)) %>%#*100) %>%
+  ggplot(aes(sim_params, mean_in_hdr_prop,fill=mod_method)) +#, shape = as.factor(rep))) +
+  #geom_boxplot() +
+  geom_bar(stat="identity", position="dodge") +
+  geom_point(data=hdr_data_long %>% mutate(in_hdr_prop = in_hdr/5), 
+             aes(sim_params, in_hdr_prop,fill=mod_method,shape = as.factor(rep)),
+             color="black",
+             position = position_jitterdodge(dodge.width = 1),
+             size=3) +
+  scale_fill_manual(values=color_vec,name="", breaks=mod_meth) +
+  scale_shape_manual(values = c(21, 22, 23), name = "Training set") +
+  xlab("") +
+  ylab("Percent of true parameters\nin HDR") +
+  scale_y_continuous(labels = scales::percent) +#, limits = c(0,100)) +
+  ggtitle("A") +
+  facet_wrap(~HDR, ncol = 1) +
+  #ylim(c(0,100)) +
+ scale_x_discrete(labels=c("0.001_1e-5"  =expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.001_1e-7"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.1_1e-5"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.1_1e-7"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7")))))
+
+
+b_supp = data_s %>% mutate(fit_hdi_width= 10^fit_95hdi_high - 10^fit_95hdi_low) %>%
+  ggplot(aes(sim_params, fit_hdi_width, color = mod_method)) + #, shape = as.factor(presim_rep))) +
+  #geom_point(position = position_jitterdodge()) +
+  geom_boxplot() +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  ylab("s 95% HDI width") +
+  xlab("") +
+  #theme(legend.position = "none") +
+scale_x_discrete(labels=c("0.01_1e-07"  =expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.01_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.01_0.001"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.01_1e-09"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.1_0.001"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.1_1e-09"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.001_0.001"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.001_1e-09"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-9"))),
+                          "0.001_1e-05"  =expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.001_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7"))))) +
+  ggtitle("B")
+
+c_supp = data_s %>%
+  mutate(mut_hdi_width= mut_95hdi_high - mut_95hdi_low) %>%
+  ggplot(aes(sim_params, mut_hdi_width, color = mod_method)) +#, shape = as.factor(presim_rep))) +
+  #geom_point(position = position_jitterdodge()) +
+  geom_boxplot() +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  scale_y_log10() +
+  ylab(expression(paste(delta," 95% HDI width, log10"))) +
+  xlab("") +
+  scale_x_discrete(labels=c("0.01_1e-07"  =expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.01_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.01_0.001"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.01_1e-09"  = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.1_0.001"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.1_1e-09"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.001_0.001"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.001_1e-09"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-9"))),
+                          "0.001_1e-05"  =expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.001_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7"))))) +
+  ggtitle("C")
+
+data_s$sim_params = factor(data_s$sim_params, 
+                           levels = c("0.01_1e-07", "0.01_1e-05",  "0.01_0.001",  "0.01_1e-09",
+                                      "0.1_0.001",   "0.1_1e-09",   "0.001_0.001", "0.001_1e-09",
+                                      "0.001_1e-05", "0.001_1e-07", "0.1_1e-05", "0.1_1e-07"),
+                         ordered = TRUE, labels=c("0.01_1e-07" = expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.01_1e-05"=expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.01_0.001"=expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.01_1e-09"=expression(atop(paste(italic("s"[C])," = 0.01,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.1_0.001"=expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.1_1e-09"=expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.001_0.001"=expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-3"))),
+                                                  "0.001_1e-09"=expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-9"))),
+                                                  "0.001_1e-05"=expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.001_1e-07"=expression(atop(paste(italic("s"[C])," = 0.001,"), paste(italic(delta[C]), "  = 1e-7"))),
+                                                  "0.1_1e-05"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-5"))),
+                                                  "0.1_1e-07"  = expression(atop(paste(italic("s"[C])," = 0.1,"), paste(italic(delta[C]), "  = 1e-7")))
+                                                  ))
+
+
+
+data_d = data_s %>%
+  pivot_longer(cols = c("mu_ratio", "s_ratio"), 
+               names_to = "error_type", values_to = "log10 ( MAP parameter / true parameter )") %>%
+  mutate(`log10 ( MAP parameter / true parameter )` = log10(`log10 ( MAP parameter / true parameter )`))
+
+d_supp = data_d %>% 
+  filter(n_presim == "100000") %>%
+  ggplot(aes(error_type,`log10 ( MAP parameter / true parameter )`, color=mod_method)) +
+  geom_boxplot() +
+  geom_point(aes(shape=presim_rep),position = position_jitterdodge()) +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  xlab("") +
+  facet_wrap(~sim_params, labeller=label_parsed, scales = "free", ncol=4) +
+  scale_x_discrete(labels=c("s_ratio"  = expression(italic("s"[C])),
+                            "mu_ratio" = expression(italic(delta[C]))))+
+  xlab("Relative error type") +
+  theme(panel.spacing.x=unit(1, "lines")) +
+  ggtitle("D")
+
+
+e_supp = data_s %>%
+  ggplot(aes(mod_method,mean_rmse_ppc, color=mod_method)) +
+  #geom_point(position=position_jitter()) +
+  geom_pointrange(aes(ymin = rmse95_low_ppc,ymax = rmse95_hi_ppc), alpha=0.5,
+                  position=position_jitter()) +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  #theme(legend.position = "none") +
+  facet_wrap(~sim_params, labeller=label_parsed, ncol=4,strip.position="bottom") +
+  xlab("") +
+  ylab("Posterior predictive check \nroot mean square error") +
+  theme(axis.text.x=element_blank()) +
+  ggtitle("E")
+
+f_supp = data_s %>%
+  #  ggplot(aes(sim_params,rmse_map, color=mod_method)) +
+  ggplot(aes(mod_method,rmse_map, color=mod_method)) +
+  facet_wrap(~sim_params, labeller=label_parsed, ncol=4,strip.position="bottom") +
+  geom_boxplot() +
+  geom_point(position = position_jitterdodge()) +
+  theme(axis.text.x=element_blank()) +
+  scale_color_manual(values=color_vec, 
+                     name="",
+                     breaks=mod_meth) +
+  xlab("") +
+  ylab("MAP posterior prediction \nroot mean square error") +
+  ggtitle("F")
+
+layout <- "
+AAABBB
+AAACCC
+DDDDDD
+DDDDDD
+EEEFFF
+"
+supp = a_supp + b_supp + c_supp + d_supp + e_supp + f_supp +
+  plot_layout(design = layout)
+supp
+#ggsave(paste0(fig_path,"SupplementaryFig5.pdf"), plot = supp, width = 30, height = 25, units = "in")
+ggsave(paste0(fig_path,"RejectionABCChemo.png"), plot = supp, width = 30, height = 20, units = "in")
+```
+
+

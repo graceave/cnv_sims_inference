@@ -84,4 +84,62 @@ generation=np.genfromtxt(g_file,delimiter=',', skip_header=1,dtype="int64")
 
 # np.savetxt("WF_simulated_single_observations.csv", all_obs_WF, delimiter=',')
 
-### add the generation of pseudo obs for multiple observations ###
+### additional observations after review, WF only ###
+
+
+
+cnv_params = np.log10(np.array([1e-2,1e-7]))
+all_params=np.tile(cnv_params, (reps,1))
+
+obs = CNVsimulator_simpleWF(reps, N, s_snv, m_snv, generation, parameters=cnv_params, seed=None)
+all_obs_WF = obs
+
+cnv_params = np.log10(np.array([1e-2,1e-5]))
+all_params=np.append(all_params,np.tile(cnv_params, (reps,1)), axis=0)
+
+obs = CNVsimulator_simpleWF(reps, N, s_snv, m_snv, generation, parameters=cnv_params, seed=None)
+all_obs_WF =np.append(all_obs_WF,obs,axis=0)
+
+cnv_params = np.log10(np.array([1e-2,1e-3]))
+all_params=np.append(all_params,np.tile(cnv_params, (reps,1)), axis=0)
+
+obs = CNVsimulator_simpleWF(reps, N, s_snv, m_snv, generation, parameters=cnv_params, seed=None)
+all_obs_WF =np.append(all_obs_WF,obs,axis=0)
+
+cnv_params = np.log10(np.array([1e-2,1e-9]))
+all_params=np.append(all_params,np.tile(cnv_params, (reps,1)), axis=0)
+
+obs = CNVsimulator_simpleWF(reps, N, s_snv, m_snv, generation, parameters=cnv_params, seed=None)
+all_obs_WF =np.append(all_obs_WF,obs,axis=0)
+
+cnv_params = np.log10(np.array([1e-1,1e-3]))
+all_params=np.append(all_params,np.tile(cnv_params, (reps,1)), axis=0)
+
+obs = CNVsimulator_simpleWF(reps, N, s_snv, m_snv, generation, parameters=cnv_params, seed=None)
+all_obs_WF =np.append(all_obs_WF,obs,axis=0)
+
+cnv_params = np.log10(np.array([1e-1,1e-9]))
+all_params=np.append(all_params,np.tile(cnv_params, (reps,1)), axis=0)
+
+obs = CNVsimulator_simpleWF(reps, N, s_snv, m_snv, generation, parameters=cnv_params, seed=None)
+all_obs_WF =np.append(all_obs_WF,obs,axis=0)
+
+cnv_params = np.log10(np.array([1e-3,1e-3]))
+all_params=np.append(all_params,np.tile(cnv_params, (reps,1)), axis=0)
+
+obs = CNVsimulator_simpleWF(reps, N, s_snv, m_snv, generation, parameters=cnv_params, seed=None)
+all_obs_WF =np.append(all_obs_WF,obs,axis=0)
+
+cnv_params = np.log10(np.array([1e-3,1e-9]))
+all_params=np.append(all_params,np.tile(cnv_params, (reps,1)), axis=0)
+
+obs = CNVsimulator_simpleWF(reps, N, s_snv, m_snv, generation, parameters=cnv_params, seed=None)
+all_obs_WF =np.append(all_obs_WF,obs,axis=0)
+
+all_obs_WF = np.append(all_obs_WF,all_params,axis=1)
+
+old_WF = np.genfromtxt("WF_simulated_single_observations.csv", delimiter=",")
+
+all_obs_WF = np.append(old_WF, all_obs_WF, axis = 0)
+
+np.savetxt("WF_simulated_single_observations_new.csv", all_obs_WF, delimiter=',')

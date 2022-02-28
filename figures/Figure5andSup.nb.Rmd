@@ -30,19 +30,19 @@ read_est_params = function(x) {
                                      "fit_95hdi_low","fit_95hdi_high",
                                      "mut_95hdi_low","mut_95hdi_high",
                                      "aic", "dic", "waic1", "waic2")) %>%
-      separate(col_to_sep, into = c(NA,NA,NA,"n_presim", "presim_rep","s_real","s_real2"), 
+      mutate(n_sim=NA) %>%
+      separate(col_to_sep, into = c(NA,NA,NA,"n_presim", "presim_rep","s_real"), 
                sep="([_.])") %>%
-      mutate(s_real = paste(str_remove(s_real, "csv"), s_real2,sep = ".")) %>%
-      select(-s_real2) %>%
+      mutate(s_real = str_remove(s_real, "csv")) %>%
       mutate(s_est_10 = s_est, s_real_10 = as.numeric(s_real),
              mu_est_10 = mu_est, mu_real_10 = mu_real,
              s_est = 10^s_est, s_real = 10^as.numeric(s_real),
              mu_est = 10^mu_est, mu_real = 10^mu_real) %>%
       mutate(mu_ratio = mu_est/mu_real, s_ratio = s_est/s_real,
              mu_diff = mu_est - mu_real, s_diff = s_est - s_real) %>%
-      mutate(flow_type = if_else(str_detect(x, "nsf"), "NSF", "MAF"))
+      mutate(flow_type = if_else(str_detect(x, "nsf"), "NSF", "MAF")) 
   }
-  if(str_detect(x, "pyABC")==TRUE) {
+  if(str_detect(x, "ABC")==TRUE) {
     file = read_csv(x, col_names = c("Model","Method","col_to_sep",
                                      "s_est","mu_real",
                                      "mu_est","s_snv","m_snv","rmse_map",
@@ -51,13 +51,14 @@ read_est_params = function(x) {
                                      "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
                                      "fit_95hdi_low","fit_95hdi_high",
                                      "mut_95hdi_low","mut_95hdi_high",
-                                     "aic", "dic", "waic1", "waic2")) %>%
+                                     "aic", "dic", "waic1", "waic2", "n_sim")) %>%
       separate(col_to_sep, into = c("n_presim","s_real"), 
                sep="([-])") %>%
       mutate(s_real = as.numeric(s_real)*-1) %>%
       mutate(presim_rep = case_when(str_detect(x, "_1_") ~ "1",
                                     str_detect(x, "_2_") ~ "2",
                                     str_detect(x, "_3_") ~ "3")) %>%
+      mutate(n_sim = if("n_sim" %in% colnames(.)) n_sim else NA) %>%
       select("Model","Method","n_presim", "presim_rep","s_real",
              "s_est","mu_real",
              "mu_est","s_snv","m_snv","rmse_map",
@@ -66,7 +67,7 @@ read_est_params = function(x) {
              "mean_corr_ppc","corr95_low_ppc", "corr95_hi_ppc",
              "fit_95hdi_low","fit_95hdi_high",
              "mut_95hdi_low","mut_95hdi_high",
-             "aic", "dic", "waic1", "waic2") %>%
+             "aic", "dic", "waic1", "waic2", "n_sim") %>%
       mutate(s_est_10 = s_est, s_real_10 = as.numeric(s_real),
              mu_est_10 = mu_est, mu_real_10 = mu_real,
              s_est = 10^s_est, s_real = 10^as.numeric(s_real),
@@ -82,7 +83,8 @@ read_est_params = function(x) {
 read_est_params_single = function(x) {
   data = read_est_params(x)
   data = data %>% 
-    mutate(obs_set = str_extract(x, pattern="\\w+.([0-1]+)_([mut57]+)"))
+    mutate(obs_set = str_extract(x, pattern="\\w+.([0-1]+)_([mut57]+)")) %>%
+    select(-n_sim)
   return(data)
 }
 
@@ -335,19 +337,19 @@ ggsave(paste0(fig_path,"Figure5.pdf"), plot = fig5, width = 20, height = 10, uni
 ggsave(paste0(fig_path,"Figure5.png"), plot = fig5, width = 20, height = 10, units = "in")
 ```
 
-*Figure 4.*  A set of eleven simulated synthetic observations was generated from a Wright-Fisher model with CNV selection coefficients sampled from an exponential distribution of fitness effects (DFE) (black curve). The MAP DFEs (blue curves) were directly inferred using three different subsets of eight out of eleven synthetic observations. We also inferred the selection coefficient for each observation in the set of eleven individually, and fit Gamma distributions to sets of eight inferred selection coefficients (green curves). All inferences were performed with NPE using the same amortized network to infer a posterior for each set of eight synthetic observations or each single observation. 
+*Figure 5.*  A set of eleven simulated synthetic observations was generated from a Wright-Fisher model with CNV selection coefficients sampled from an exponential distribution of fitness effects (DFE) (black curve). The MAP DFEs (blue curves) were directly inferred using three different subsets of eight out of eleven synthetic observations. We also inferred the selection coefficient for each observation in the set of eleven individually, and fit Gamma distributions to sets of eight inferred selection coefficients (green curves). All inferences were performed with NPE using the same amortized network to infer a posterior for each set of eight synthetic observations or each single observation. 
 
 
-```{r sup fig 6}
+```{r sup fig 9}
 supp = plot_list[[5]] + plot_list[[6]] + plot_list[[7]] + plot_list[[8]] 
 supp
-ggsave(paste0(fig_path,"SupplementaryFig6.pdf"), plot = supp, width = 20, height = 10, units = "in")
-ggsave(paste0(fig_path,"SupplementaryFig6.png"), plot = supp, width = 20, height = 10, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFig9.pdf"), plot = supp, width = 20, height = 10, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFig9.png"), plot = supp, width = 20, height = 10, units = "in")
 ```
 
-*Supplementary Figure 6.*  A set of eleven simulated synthetic observations was generated from a Wright-Fisher model with CNV selection coefficients sampled from an Gamma distribution where =10 of fitness effects (DFE) (black curve) . The MAP DFEs (blue curves) were directly inferred using three different subsets of eight out of eleven synthetic observations. We also inferred the selection coefficient for each observation in the set of eleven individually, and fit Gamma distributions to sets of eight inferred selection coefficients (green curves). All inferences were performed with NPE using the same amortized network to infer a posterior for each set of eight synthetic observations or each single observation.  
+*Supplementary Figure 9.*  A set of eleven simulated synthetic observations was generated from a Wright-Fisher model with CNV selection coefficients sampled from an Gamma distribution where =10 of fitness effects (DFE) (black curve) . The MAP DFEs (blue curves) were directly inferred using three different subsets of eight out of eleven synthetic observations. We also inferred the selection coefficient for each observation in the set of eleven individually, and fit Gamma distributions to sets of eight inferred selection coefficients (green curves). All inferences were performed with NPE using the same amortized network to infer a posterior for each set of eight synthetic observations or each single observation.  
 
-```{r sup fig 7}
+```{r sup fig 10}
 a = multi_data %>%
   select(obs_set, shape_real, scale_real, es, mu_real, 
          mean_rmse_ppc, rmse95_low_ppc, rmse95_hi_ppc) %>%
@@ -403,8 +405,8 @@ b = multi_data %>%
 
 sup = a/b
 sup
-ggsave(paste0(fig_path,"SupplementaryFig7.pdf"), plot = sup, width = 20, height = 10, units = "in")
-ggsave(paste0(fig_path,"SupplementaryFig7.png"), plot = sup, width = 20, height = 10, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFig10.pdf"), plot = sup, width = 20, height = 10, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFig10.png"), plot = sup, width = 20, height = 10, units = "in")
 ```
 We assessed the performance of inference from a set of observations using out-of-sample posterior predictive accuracy [94]that inferring  and  from a set of observations results in lower posterior predictive accuracy compared to inferring sC from a single observation (Supplementary File x, Supplementary Figure 7)
 

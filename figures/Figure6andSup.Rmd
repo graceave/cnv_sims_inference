@@ -290,7 +290,6 @@ ppc_chemo_all = pd.concat([pd.DataFrame(ppc_chemo, columns = generation.tolist()
 
 ppc_wf_all = pd.concat([ppc_wf_all, pd.DataFrame(rmse_wf, columns = ['map_rmse_267','map_rmse_116'])], axis=1)
 ppc_chemo_all = pd.concat([ppc_chemo_all, pd.DataFrame(rmse_chemo, columns = ['map_rmse_267','map_rmse_116'])], axis=1)
-
 ```
 
 ```{r d PPCs plot}
@@ -333,7 +332,7 @@ ggsave(paste0(fig_path,"Figure6.png"), plot = fig6, width = 22, height = 12, uni
 
 
 
-```{r sup fig 8}
+```{r sup fig 11}
 sup = py$ppc_chemo_all %>%
   as_tibble() %>%
   bind_rows(py$ppc_wf_all) %>%
@@ -353,12 +352,12 @@ sup = py$ppc_chemo_all %>%
                      breaks = c("Observation", "WF ppc 116","WF ppc 267", "Chemo ppc 116","Chemo ppc 267")) +
   ylab("Proportion of cells with GAP1 CNV") 
 sup
-ggsave(paste0(fig_path,"SupplementaryFigure8.pdf"), plot = sup, width = 25, height = 15, units = "in")
-ggsave(paste0(fig_path,"SupplementaryFigure8.png"), plot = sup, width = 25, height = 15, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure11.pdf"), plot = sup, width = 25, height = 15, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure11.png"), plot = sup, width = 25, height = 15, units = "in")
 ```
 
 
-```{r sup fig 9}
+```{r sup fig 12}
 as_tibble(py$ppc_wf_all) %>%
   bind_rows(py$ppc_chemo_all) %>%
   filter(n_presim == "100000") %>%
@@ -370,22 +369,23 @@ as_tibble(py$ppc_wf_all) %>%
 sup = as_tibble(py$ppc_wf_all) %>%
   bind_rows(py$ppc_chemo_all) %>%
   filter(n_presim == "100000") %>%
-  select(Model, Method, Population, gen, map_rmse_267, map_rmse_116) %>%
+  select(Model, Method, Population, gen, map_rmse_267, map_rmse_116, presim_rep) %>%
   mutate(gen_lab = if_else(gen == 116, "Inference using up\nto generation 116","Inference using up\nto generation 267")) %>%
   pivot_longer(cols = c("map_rmse_267", "map_rmse_116"), names_to = "type", values_to = "value") %>%
-  ggplot(aes(type, value, color = Population)) +
+  ggplot(aes(type, value, color = Population, shape = presim_rep)) +
   scale_color_manual(values=mycolors) +
   geom_beeswarm(dodge.width = 0.5) +
+  scale_shape_manual(values = c(21, 22, 23), name = "Training set") +
   scale_x_discrete(labels = c("PPC up to\ngeneration 116", "PPC up to\ngeneration 267"), name="") +
   facet_grid(Model~gen_lab) +
   ylab("MAP RMSE")
 
 sup
-ggsave(paste0(fig_path,"SupplementaryFigure9.pdf"), plot = sup, width = 12, height = 6, units = "in")
-ggsave(paste0(fig_path,"SupplementaryFigure9.png"), plot = sup, width = 12, height = 6, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure12.pdf"), plot = sup, width = 12, height = 6, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure12.png"), plot = sup, width = 12, height = 6, units = "in")
 ```
 
-```{r sup fig 10}
+```{r sup fig 13}
 a = param_data %>% 
   filter(Model == "WF") %>%
   #filter(gen == 267) %>%
@@ -420,12 +420,12 @@ b = param_data %>%
 
 sup = a / b + plot_annotation(tag_levels = 'A') 
 sup
-ggsave(paste0(fig_path,"SupplementaryFigure10.pdf"), plot = sup, width = 12, height = 12, units = "in")
-ggsave(paste0(fig_path,"SupplementaryFigure10.png"), plot = sup, width = 12, height = 12, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure13.pdf"), plot = sup, width = 12, height = 12, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure13.png"), plot = sup, width = 12, height = 12, units = "in")
 ```
 
 
-```{r sup fig 11}
+```{r sup fig 14}
 data = param_116 %>%
   filter(Model == "WF") %>%
   filter(Method=="NPE") %>%
@@ -436,11 +436,16 @@ data = param_116 %>%
   filter(other_params !=  "0.01_0")
 
 
-labels=c("0.001_1e-05"  = expression(atop(paste(italic("s"[B])," = 0.001,"), paste(italic(delta[B]), "  = 1e-5"))),
-         "0_0" = expression(atop(paste(italic("s"[B])," = 0,"), paste(italic(delta[B]), "  = 0"))), 
+labels=c("0_0" = expression(atop(paste(italic("s"[B])," = 0,"), paste(italic(delta[B]), "  = 0"))),
+         "0.001_1e-05"  = expression(atop(paste(italic("s"[B])," = 0.001,"), paste(italic(delta[B]), "  = 1e-5"))),
+         "0.001_1e-06" = expression(atop(paste(italic("s"[B])," = 0.001,"), paste(italic(delta[B]), "  = 1e-6"))),
+         "0.001_1e-07" = expression(atop(paste(italic("s"[B])," = 0.001,"), paste(italic(delta[B]), "  = 1e-7"))),
          "0.01_1e-05"  = expression(atop(paste(italic("s"[B])," = 0.01,"), paste(italic(delta[B]), "  = 1e-5"))),
-         "0.1_1e-07"  = expression(atop(paste(italic("s"[B])," = 0.1,"), paste(italic(delta[B]), "  = 1e-7"))),
-         "0.1_1e-05"  = expression(atop(paste(italic("s"[B])," = 0.1,"), paste(italic(delta[B]), "  = 1e-5"))))
+         "0.01_1e-06"  = expression(atop(paste(italic("s"[B])," = 0.01,"), paste(italic(delta[B]), "  = 1e-6"))),
+         "0.01_1e-07"  = expression(atop(paste(italic("s"[B])," = 0.01,"), paste(italic(delta[B]), "  = 1e-7"))),
+         "0.1_1e-05"  = expression(atop(paste(italic("s"[B])," = 0.1,"), paste(italic(delta[B]), "  = 1e-5"))),
+         "0.1_1e-06"  = expression(atop(paste(italic("s"[B])," = 0.1,"), paste(italic(delta[B]), "  = 1e-6"))),
+         "0.1_1e-07"  = expression(atop(paste(italic("s"[B])," = 0.1,"), paste(italic(delta[B]), "  = 1e-7"))))
 
 
 
@@ -456,18 +461,19 @@ sup = data %>%
   scale_fill_discrete(guide = "none") +
   theme(legend.position = 'top')
 sup
-ggsave(paste0(fig_path,"SupplementaryFigure11.pdf"), plot = sup, width = 13, height = 12, units = "in")
-ggsave(paste0(fig_path,"SupplementaryFigure11.png"), plot = sup, width = 13, height = 12, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure14.pdf"), plot = sup, width = 13, height = 12, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure14.png"), plot = sup, width = 13, height = 12, units = "in")
 ```
 
-```{r sup fig 12}
+```{r sup fig 15}
 a = data %>%
   ggplot(aes(Population, mean_rmse_ppc, color=other_params)) +
   geom_pointrange(aes(ymin = rmse95_low_ppc,ymax = rmse95_hi_ppc), alpha=0.5,
                   position=position_dodge2(width=0.5)) +
   ylab("Posterior predictive check\nroot mean square error") +
   xlab("") +
-  scale_color_discrete(labels = labels,  name = "Other beneficial mutations") 
+  scale_color_discrete(labels = labels,  name = "Other beneficial mutations") +
+  theme(legend.position = "bottom")
 
 b = data %>%
   ggplot(aes(Population, mean_corr_ppc, color=other_params)) +
@@ -480,7 +486,7 @@ b = data %>%
 
 sup = a / b + plot_annotation(tag_levels = 'A') 
 sup
-ggsave(paste0(fig_path,"SupplementaryFigure12.pdf"), plot = sup, width = 15, height = 10, units = "in")
-ggsave(paste0(fig_path,"SupplementaryFigure12.png"), plot = sup, width = 15, height = 10, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure15.pdf"), plot = sup, width = 15, height = 10, units = "in")
+ggsave(paste0(fig_path,"SupplementaryFigure15.png"), plot = sup, width = 15, height = 10, units = "in")
 ```
 

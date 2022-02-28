@@ -24,11 +24,6 @@ from cnv_simulation import CNVsimulator_simpleWF, CNVsimulator_simpleChemo
 
 red, blue, green = sns.color_palette('Set1', 3)
 
-import sbi.utils as utils
-from sbi.inference.base import infer
-from sbi.inference import SNPE, prepare_for_sbi
-import torch
-
 #### arguments ####
 parser = argparse.ArgumentParser()
 parser.add_argument('-m', "--model")
@@ -47,7 +42,7 @@ presim_data = str(args.presimulated_data)
 presim_theta = str(args.presimulated_theta)
 obs_name = str(args.observations)
 out = str(args.out_file)
-EvoModel = str(args.model)
+model = str(args.model)
 path = str(args.directory)
 g_file = str(args.generation_file)
 
@@ -60,39 +55,10 @@ m_snv=1e-5
 reps=1
 generation=np.genfromtxt(g_file,delimiter=',', skip_header=1,dtype="int64")
 
-#### prior ####
-prior_min = np.log10(np.array([1e-4,1e-12]))
-prior_max = np.log10(np.array([0.4,1e-3]))
-prior = utils.BoxUniform(low=torch.tensor(prior_min), 
-                         high=torch.tensor(prior_max))
-
-
-#### sbi simulator ####
-def CNVsimulator(cnv_params):
-    cnv_params = np.asarray(torch.squeeze(cnv_params,0))
-    reps = 1
-    if EvoModel == "WF":
-        states = CNVsimulator_simpleWF(reps = reps, N=N, s_snv=s_snv, m_snv=m_snv, generation=generation, seed=None, parameters=cnv_params)
-    if EvoModel == "Chemo":
-        states = CNVsimulator_simpleChemo(reps, s_snv, m_snv, generation, parameters=cnv_params, seed=None)
-        
-    return states
-
-
-#make sure simulator and prior adhere to sbi requirementst
-simulator, prior = prepare_for_sbi(CNVsimulator, prior)
 
 #### get presimulated data ####
-theta_presimulated = torch.tensor(np.genfromtxt(path+'presimulated_data/'+presim_theta,delimiter=',')).type('torch.FloatTensor')
-x_presimulated = torch.tensor(np.genfromtxt(path+'presimulated_data/'+presim_data,delimiter=',')).type('torch.FloatTensor')
-
-
-#### run inference ####
-inference = SNPE(prior, density_estimator='maf')
-#inference = SNPE(prior, density_estimator='nsf')
-density_estimator = inference.append_simulations(theta_presimulated, x_presimulated).train()
-posterior = inference.build_posterior(density_estimator)
-
+theta_presimulated = np.genfromtxt(path+'presimulated_data/'+presim_theta,delimiter=',')
+x_presimulated = np.genfromtxt(path+'presimulated_data/'+presim_data,delimiter=',')
 
 #### functions for evaluating performance ####
 # root mean square error between simulated trajectory and "true" trajectory
@@ -148,15 +114,28 @@ def get_hdr(density, mylevel): #this function is thanks to the lovely folks who 
     contours = np.reshape(contours[idx_unsort], shape)
     return contours
 
+# distance for rejection ABC
+def distance_euc(sim, obs):
+    d=((sim-obs)**2).sum(axis=1)
+    return d**0.5
+
 #### get all observed data ####
 obs_file = np.genfromtxt(path + obs_name,delimiter=',')
 
 #### for each observed data evaluate ####
 for i in range(obs_file.shape[0]):
     observation = obs_file[i,0:25]
-    true_params = torch.tensor(obs_file[i,25:27]).type('torch.FloatTensor')
-    posterior_samples = posterior.sample((5000,), x=observation)
-    log_probability = posterior.log_prob(posterior_samples, x=observation)
+    true_params = obs_file[i,25:27]
+    
+    # get distances
+    distances = distance_euc(x_presimulated, observation)
+    # threshold that accepts 5% of the samples
+    quantile = 0.05
+    ϵ_e = np.quantile(distances, quantile)
+    # get accepted
+    idx_accepted = distances < ϵ_e
+    
+    posterior_samples = theta_presimulated[idx_accepted, ]
     
     fitness_samples = np.asarray(posterior_samples[:,0])
     mut_samples = np.asarray(posterior_samples[:,1])
@@ -189,7 +168,10 @@ for i in range(obs_file.shape[0]):
     evo_reps_posterior = []
     logprob_posterior = []
     for j in range(50):
-        obs_post = CNVsimulator(params_post[j,:])
+        if model == "WF":
+            obs_post = CNVsimulator_simpleWF(reps = reps, N=N, s_snv=s_snv, m_snv=m_snv, generation=generation, seed=None, parameters=params_post[j,:])
+        if model == "Chemo":
+            obs_post = CNVsimulator_simpleChemo(reps, s_snv, m_snv, generation, parameters=params_post[j,:], seed=None)
         evo_reps_posterior.append(obs_post)
         logprob_posterior.append(np.log(kernel(params_post[j,:])))
     evo_reps_posterior = np.vstack(evo_reps_posterior)
@@ -201,7 +183,11 @@ for i in range(obs_file.shape[0]):
     corr95_low_ppc, corr95_hi_ppc = corr95_ci
     
     # map posterior prediction
-    post_prediction_map = CNVsimulator(torch.tensor([s_est, μ_est]))
+    if model == "WF":
+        post_prediction_map = CNVsimulator_simpleWF(reps = reps, N=N, s_snv=s_snv, m_snv=m_snv, generation=generation, seed=None, parameters=np.array([s_est, μ_est]))
+    if model == "Chemo":
+        post_prediction_map = CNVsimulator_simpleChemo(reps, s_snv, m_snv, generation, parameters=np.array([s_est, μ_est]))
+ 
     rmse_map = rmse(post_prediction_map, observation)
     corr_map = np.corrcoef(np.append(observation.reshape(1,observation.shape[0]), post_prediction_map, 0))[0,1]
     
@@ -214,7 +200,7 @@ for i in range(obs_file.shape[0]):
     mut_95hdi_low,mut_95hdi_high = pyabc.visualization.credible.compute_credible_interval(vals=mut_samples, weights=None)
     # save relevant values
     f= open(path + out + "_est_real_params.csv","a+")
-    f.write(EvoModel+',NPE,' + presim_data + ','.join(str(format(j)) 
+    f.write(model+',rejectionABC,' + presim_data + ','.join(str(format(j)) 
                                       for j in
                                       (true_params[0],s_est,true_params[1],
                                        μ_est,s_snv,m_snv,rmse_map,
@@ -231,7 +217,7 @@ for i in range(obs_file.shape[0]):
     
     
     # text description
-    txt = 'NPE\nModel: ' + EvoModel + '\nSimulation id: ' + str(i) + '\nlog10(CNV fitness effect): ' + str(true_params[0]) + '\nlog10(CNV mutation rate): ' + str(true_params[1]) + '\nSNV fitness:' + str(s_snv) + '\nSNV mutation rate:' + str(m_snv) + '\n' + presim_data
+    txt = 'Rejection ABC\nModel: ' + model + '\nSimulation id: ' + str(i) + '\nlog10(CNV fitness effect): ' + str(true_params[0]) + '\nlog10(CNV mutation rate): ' + str(true_params[1]) + '\nSNV fitness:' + str(s_snv) + '\nSNV mutation rate:' + str(m_snv) + '\n' + presim_data
     
     axes[0,0].axis('off')
     axes[0,0].annotate(txt, (0.1, 0.5), xycoords='axes fraction', va='center')

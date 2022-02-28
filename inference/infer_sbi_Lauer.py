@@ -57,8 +57,8 @@ g_file = str(args.generation_file)
 #####other parameters needed for model #####
 # pop size, fitness SNVs, mutation rate SNVs, number of generations
 N = 3.3e8
-s_snv=0.01#0.001 
-m_snv=1e-5  
+s_snv=0.001#0.001 
+m_snv=1e-6  
 reps=1
 generation=np.genfromtxt(g_file,delimiter=',', skip_header=1,dtype="int64")[0:11]
 
