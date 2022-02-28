@@ -5,11 +5,14 @@ Inference:
 * Models:
   * Wright-Fisher and Chemostat: cnv_simulation.py
   * Determining the effective population size in the chemostat: Pop_sampling_variance_sims.ipynb
+  * Time it takes to run a simulation using each model: Simulation_time.ipynb
 * Observations:
   * Single synthetic observations: generate_pseudo_obs.py
   * Sets of multiple synthetic observations: Generate_synthetic_obs_multi.ipynb
   * Interpolation of barcoded population data (so that it has the same timepoints as gln01-gln09): Interpolating_bc.ipynb
 * Scripts used for inference:
+  * Generating presimulated data used for rejection ABC and NPE: generate_presimulated_data.py
+  * Rejection ABC: infer_rejectionABC.py
   * SMC-ABC (using pyABC, adaptive Euclidean distance): infer_pyABC.py
   * NPE, single observations (using sbi): infer_sbi.py
   * NPE, sets of multiple observations (using sbi): infer_sbi_mult.py
@@ -27,6 +30,7 @@ Fitness assays:
 
 Figures:
 * Figure 1A: Fig1A.R
+* Supplementary Figure 1: Interpolating_bc.ipynb
 * Figure 1D inset: Fig1Dinset.ipynb
 * Figures 2-6, and associated supplemental material (html associated with each Rmd): Figure2andSup.Rmd, Figure3andSup.Rmd, Figure4andSup.Rmd, Figure5andSup.Rmd, Figure6andSup.Rmd
 
