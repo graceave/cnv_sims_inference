@@ -1,6 +1,8 @@
 # cnv_sims_inference
 CNV simulation and inference of formation rate and selection coefficient
 
+Data to generate figures can be found at https://osf.io/e9d5x/
+
 Inference:
 * Models:
   * Wright-Fisher and Chemostat: cnv_simulation.py
@@ -32,7 +34,7 @@ Figures:
 * Figure 1A: Fig1A.R
 * Supplementary Figure 1: Interpolating_bc.ipynb
 * Figure 1D inset: Fig1Dinset.ipynb
-* Figures 2-6, and associated supplemental material (html associated with each Rmd): Figure2andSup.Rmd, Figure3andSup.Rmd, Figure4andSup.Rmd, Figure5andSup.Rmd, Figure6andSup.Rmd
+* Figures 2-6, and associated supplemental material (html associated with each Rmd): Figure3andSup.Rmd, Figure4andSup.Rmd, Figure5andSup.Rmd, Figure6andSup.Rmd, Figure7andSup.Rmd
 
 
 
