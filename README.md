@@ -34,7 +34,7 @@ Figures:
 * Figure 1A: Fig1A.R
 * Supplementary Figure 1: Interpolating_bc.ipynb
 * Figure 1D inset: Fig1Dinset.ipynb
-* Figures 2-6, and associated supplemental material (html associated with each Rmd): Figure3andSup.Rmd, Figure4andSup.Rmd, Figure5andSup.Rmd, Figure6andSup.Rmd, Figure7andSup.Rmd
+* Figures 3-7, and associated supplemental material (html associated with each Rmd): Figure3andSup.Rmd, Figure4andSup.Rmd, Figure5andSup.Rmd, Figure6andSup.Rmd, Figure7andSup.Rmd
 
 
 
